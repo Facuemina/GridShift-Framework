@@ -1,0 +1,198 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jul 14 14:19:30 2026
+
+@author: Facundo
+"""
+
+import jax.numpy as jnp
+from jax import random
+from src.engine import *
+from src.utils import *
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.ndimage import gaussian_filter
+import argparse
+import os
+import pickle
+
+#%% Set simulation and network parameters
+parser = argparse.ArgumentParser()
+parser.add_argument("--path2save", type=str, default='GridShift-FiringRate-num0')#'GridShift-Minimal-num')
+parser.add_argument("--l_asym", type=float, default=4)
+parser.add_argument("--dt", type=float, default=.01)
+parser.add_argument("--inclination_angle", 
+                    type=float, default=jnp.pi/3)
+parser.add_argument("--L", type=float, default=50)
+parser.add_argument("--l_torus", type=float, default=25)
+parser.add_argument("--tau", type=float, default=.01)
+parser.add_argument("--tauv", type=float, default=.1)
+parser.add_argument("--steps", type=int, default=int(5*1e4))
+parser.add_argument("--N_vis_sqrt", type=int, default=40)
+parser.add_argument("--N_conj_sqrt", type=int, default=12)
+parser.add_argument("--N_omni_sqrt", type=int, default=10)
+parser.add_argument("--hd_modules", type=int, default=8)
+parser.add_argument("--input_std", type=float, default=3)
+parser.add_argument("--angle_std", type=float, default=1.2)
+parser.add_argument("--k", type=float, default=.01)
+parser.add_argument("--m", type=float, default=.5)
+parser.add_argument("--gain", type=float, default=1.)
+parser.add_argument("--v", type=float, default=20)
+parser.add_argument("--A_vis", type=float, default=30)
+parser.add_argument("--A_hd", type=float, default=1)
+parser.add_argument("--A_vest", type=float, default=15)
+parser.add_argument("--seed", type=int, default=0)
+
+
+args = parser.parse_args()
+
+path2save = args.path2save
+
+inclination_angle = args.inclination_angle
+L = args.L #arena size
+l_torus = args.l_torus #hexagonal periodicity
+l_asym = args.l_asym
+N_vis_sqrt = args.N_vis_sqrt
+N_conj_sqrt = args.N_conj_sqrt
+N_omni_sqrt = args.N_omni_sqrt
+hd_modules = args.hd_modules
+
+N_vis = N_vis_sqrt ** 2
+N_conj = N_conj_sqrt ** 2 * hd_modules
+N_omni = N_omni_sqrt ** 2
+
+input_std = args.input_std
+angle_std = args.angle_std
+A_vis = args.A_vis * jnp.sqrt(2*jnp.pi*args.input_std**2)
+A_hd = args.A_hd * jnp.sqrt(2*jnp.pi*args.angle_std**2)
+A_vest = args.A_vest * jnp.sqrt(2*jnp.pi*angle_std**2) * jnp.sin(inclination_angle)
+seed = args.seed
+
+dt = args.dt
+steps = args.steps
+
+m = args.m
+tau = args.tau
+tauv = args.tauv
+v = args.v
+k = args.k
+gain = args.gain
+#%% Position and phase variables
+
+# simulated rat trajectory and HD
+traj = jnp.vstack(generate2D_pos(seed, steps, L, L, v, 0.8, dt)).T
+
+#Preffered head direction for each conjunctive cell
+pref_hd = jnp.repeat(jnp.linspace(0,2*jnp.pi,hd_modules,False),  N_conj_sqrt ** 2 ).reshape(-1,1)
+
+#spatial visual input positions
+x,y = jnp.meshgrid(jnp.linspace(0,L,N_vis_sqrt,False),
+                   jnp.linspace(0,L,N_vis_sqrt,False))
+pos = jnp.column_stack((x.ravel(),y.ravel()))
+
+# # Rotate
+# pos = jnp.column_stack((-x.ravel() * jnp.cos(jnp.pi/5) + y.ravel() * jnp.sin(jnp.pi/5),
+#                         y.ravel() * jnp.cos(jnp.pi/5) + x.ravel() * jnp.sin(jnp.pi/5)))
+
+# traj = traj.at[:,:-1].set(traj[:,:-1] @ jnp.array([[jnp.cos(jnp.pi/5),-jnp.sin(jnp.pi/5)],[jnp.sin(jnp.pi/5),jnp.cos(jnp.pi/5)]]))
+# traj = traj.at[:,-1].set(traj[:,-1] + jnp.pi/5)
+
+
+#Conjunctive grid phases
+X_phase_conj = jnp.column_stack(
+    generate_uniform_toroidal_phase_distribution(
+        N_conj_sqrt,N_conj_sqrt,l_torus))
+
+#Omnidirectional grid phases
+X_phase_omni = jnp.column_stack(
+    generate_uniform_toroidal_phase_distribution(
+        N_omni_sqrt,N_omni_sqrt,l_torus))
+
+X_phase_conj_dummy = X_phase_conj.copy()
+
+for i in range(1,hd_modules):
+    X_phase_conj = jnp.vstack((X_phase_conj,X_phase_conj_dummy))
+
+#%% Connectivity matrices
+
+# Visual feedforward input to conjunctive cells
+Wvis_conj = build_feedforward_connectivity(pos, X_phase_conj,
+                                           input_std, l_torus)**2
+
+# Recurrent connectivity between conjunctive cells
+Wrec_conj = build_torus_connectivity(X_phase_conj, X_phase_conj,
+                                     input_std, l_torus, l_asym = 0)
+
+# Feedforward input from conjunctive to omnidirectional cells
+Wconj_omni = jnp.zeros((N_omni,N_conj))**2
+for i in range(hd_modules):
+    idx = jnp.arange(i*N_conj_sqrt**2,(i+1)*N_conj_sqrt**2)
+    Wconj_omni = Wconj_omni.at[:,idx].set(build_torus_connectivity(X_phase_conj_dummy, X_phase_omni, input_std, l_torus, l_asym = l_asym, hd_pre=pref_hd[idx[0],0]))
+
+#%% Initiate neural variables
+# # Anti Rotate
+# pos = jnp.column_stack((-x.ravel() * jnp.cos(-jnp.pi/5) + y.ravel() * jnp.sin(-jnp.pi/5),
+#                         y.ravel() * jnp.cos(-jnp.pi/5) + x.ravel() * jnp.sin(-jnp.pi/5)))
+
+
+init_pos = traj[0:1,:-1].T
+
+U_conj = (Wvis_conj @ gaussian2D(pos,init_pos,input_std,L)) * gaussian(pref_hd,jnp.pi/2,angle_std,jnp.pi*2)
+V_conj = m * U_conj
+fU_conj = jnp.maximum(U_conj,0)**2
+fU_conj = fU_conj / ( 1 + k * fU_conj.sum())
+
+U_omni = Wconj_omni @ fU_conj
+V_omni = m * U_omni
+
+#%% Run simulation
+nfr = 30
+thresh = .1
+neural_params =( 1/tau, 1/tauv, m, k, 2, gain)
+input_params = (dt, input_std, angle_std, A_vis, A_hd, A_vest, L)
+U_conj, U_omni, V_conj, V_omni, fU_conj, rate_map_conj, rate_map_omni = run_basic_simulation((U_conj, U_omni), (V_conj, V_omni), 
+                                                                                             (Wvis_conj, Wrec_conj, Wconj_omni), 
+                                                                                             traj, neural_params,                                                                                        input_params, pos, pref_hd, steps,
+                                                                                             nfr, nfr, thresh)
+#%%
+# 2. Compute occupancy
+occupancy = compute_occupancy_map(traj, L, nfr, nfr)
+
+# 3. Prevent division by zero for unvisited spatial bins
+safe_occupancy = jnp.maximum(occupancy, 1)
+
+# 4. Compute true spatial firing rate maps
+# rate_map_conj shape: (N_neurons, nx * ny)
+# safe_occupancy shape: (nx * ny,) -> JAX handles the broadcasting automatically
+true_rate_map_conj = np.array((rate_map_conj * steps) / safe_occupancy)
+true_rate_map_omni = np.array((rate_map_omni * steps) / safe_occupancy)
+
+np.save(os.path.join(path2save,'true_rate_map_conj'),true_rate_map_conj)
+np.save(os.path.join(path2save,'true_rate_map_omni'),true_rate_map_omni)
+
+parameters = {
+    "d_asym":l_asym,
+    "dt":dt,
+    "inclination_angle": inclination_angle,
+    "L":L,
+    "l_torus":l_torus,
+    "tau":tau, 
+    "tauv":tauv,
+    "steps":steps,
+    "N_vis_sqrt": N_vis_sqrt, 
+    "N_conj_sqrt":N_conj_sqrt, 
+    "N_omni_sqrt":N_omni_sqrt,
+    "hd_modules":hd_modules, 
+    "input_std":input_std,
+    "angle_std":angle_std,
+    "k":k,
+    "m":m,
+    "gain":gain, 
+    "v":v,
+    "A_vis":A_vis, 
+    "A_hd":A_hd,
+    "A_vest":A_vest,
+    "seed":seed}
+
+with open(os.path.join(path2save,'parameters_complete.pkl'),'wb') as file:
+    pickle.dump(parameters,file)
