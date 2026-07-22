@@ -296,7 +296,7 @@ def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
     shape = corr_map.shape
     center_y, center_x = shape[0] // 2, shape[1] // 2
 
-    # --- NEW BLOCK: RESTRICT SEARCH AREA ---
+    # ---RESTRICT SEARCH AREA ---
     if search_radius_pixels is not None:
         # Create a map to search, copying the original
         search_map = corr_map.copy()
@@ -322,9 +322,8 @@ def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
     else:
         # Original behavior: find the global maximum
         peak_y, peak_x = np.unravel_index(np.argmax(corr_map), shape)
-    # --- END NEW BLOCK ---
-
-
+    # -----------------------
+    
     # 2. Handle edge cases (UPDATED with h)
     if (peak_y < h or peak_y >= shape[0] - h or
         peak_x < h or peak_x >= shape[1] - h):
@@ -334,8 +333,6 @@ def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
 
     # 3. Extract n x n neighborhood
     z = corr_map[peak_y-h : peak_y+h+1, peak_x-h : peak_x+h+1]
-
-    # ... (Rest of the function [steps 4-8] is exactly the same) ...
     
     # 4. Create design matrix 'A'
     y, x = np.array(list(np.ndindex(n, n))).T - h
@@ -370,8 +367,8 @@ def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
     # 8. Calculate final sub-pixel shift
     subpixel_y = peak_y + y_offset
     subpixel_x = peak_x + x_offset
-    final_shift_y = subpixel_y - center_y
-    final_shift_x = subpixel_x - center_x
+    final_shift_y = center_y - subpixel_y
+    final_shift_x = center_x - subpixel_x
 
     return (final_shift_y, final_shift_x)
 
@@ -397,8 +394,8 @@ def compute_rate_maps_from_sparse(sparse_spikes, traj, selected_neurons, L, dt, 
     # 1. Map continuous trajectory to 1D spatial bin indices
     x_idx = np.clip(np.floor((x_pos / L) * nx).astype(int), 0, nx - 1)
     y_idx = np.clip(np.floor((y_pos / L) * ny).astype(int), 0, ny - 1)
-    spatial_idx = y_idx * nx + x_idx  # Shape: (steps,)
-    
+    # spatial_idx = x_idx * ny + y_idx  # Shape: (steps,)
+    spatial_idx = y_idx * nx + x_idx # Shape: (steps,)
     # 2. Compute Occupancy Map (time spent in each bin in seconds)
     occupancy_1d = np.bincount(spatial_idx, minlength=nx * ny) * dt
     safe_occupancy = np.where(occupancy_1d > 0, occupancy_1d, 1.0)

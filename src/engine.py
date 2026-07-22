@@ -234,15 +234,15 @@ def run_spiking_simulation(rng_key, U0, V0, weights, traj, neural_params,
         # traj_step[:-1] gives [x_pos, y_pos]
         I_vis = A_vis * gaussian2D(pos, traj_step[:-1][:, None], sR, L)
         I_hd = A_hd * gaussian(pref_hd, hd, sHD * .5, pi2)
-        I_vest = 1 + A_vest * gaussian(pref_hd, jnp.pi/2, sHD, pi2)
+        I_vest = 1 + A_vest * gaussian(pref_hd, 3 * jnp.pi/2, sHD, pi2)
         
         dU_conj, dV_conj, fU_conj_next = _cann_dynamics(
-            U_conj, V_conj, fU_conj, Wvis_conj, Wrec_conj, I_vis, I_hd, neural_params
-        )
+            U_conj, V_conj, fU_conj, Wvis_conj, Wrec_conj, I_vis, I_hd, neural_params,
+        thresh)
         
         dU_omni, dV_omni, fU_omni_next = _omnidirectional_dynamics(
-            U_omni, V_omni, Wconj_omni, fU_conj, I_vest, neural_params
-        )
+            U_omni, V_omni, Wconj_omni, fU_conj, I_vest, neural_params,
+        thresh)
         
         U_conj_next = U_conj + dt * dU_conj
         V_conj_next = V_conj + dt * dV_conj

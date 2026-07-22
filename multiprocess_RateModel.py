@@ -103,5 +103,5 @@ if __name__ == "__main__":
                 run_job(path2save, d_asym, l_torus, incl_ang, 
                         seed = i_incl*5 + 80,
                         input_std =5, k=.01, gain = 1, nfr = 30, 
-                        thresh=[0.1,30], hd_modules=8)
+                        thresh=[0,0], hd_modules=8)
         

@@ -96,7 +96,8 @@ if __name__ == "__main__":
     NEURON_IDX = 54
     
     path2load = os.path.split(os.getcwd())[0]    
-    path2load = os.path.join(path2load,f'SimulationFiringRate-num{num}')
+    # path2load = os.path.join(path2load,f'SimulationFiringRate-num{num}')
+    path2load = os.path.join(path2load,f'Simulation-num{num}')
 
     path2load = os.path.join(path2load,f'incl_ang{0}')
     with open(os.path.join(path2load,'parameters_reduced.pkl'),'rb') as file:

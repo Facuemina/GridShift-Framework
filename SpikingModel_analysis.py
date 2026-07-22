@@ -158,17 +158,18 @@ def compute_cross_corrs(fr_maps0,fr_maps1,sd=2,smooth = False):
         
     shifts = np.zeros((fr_maps0.shape[0],2))
     for i in tqdm(range(fr_maps0.shape[0]), desc="Spatial Shift"):
-        sx, sy = find_spatial_shift_subpixel(CrossCorr[i], n = 3, search_radius_pixels = 7)#[:,::-1].T)
+        sx, sy = find_spatial_shift_subpixel(CrossCorr[i], n = 7, search_radius_pixels = 7)
         shifts[i,0], shifts[i,1] = sx, sy
     
     return shifts, CrossCorr
 
 #%%
 if __name__ == "__main__":
-    num = 2
+    #LISTA DE BUENOS: 5
+    num = 1
     
-    SMOOTH = False
-    NEURON_IDX = 54
+    SMOOTH = True
+    NEURON_IDX = 71#np.random.randint(100)
     
     path2load = os.path.split(os.getcwd())[0]    
     path2load = os.path.join(path2load,f'SimulationSpiking-num{num}')
@@ -192,132 +193,105 @@ if __name__ == "__main__":
     
     shifts_conj_x = []
     shifts_conj_y = []
-    sd = 1.5
+    sd = 2
     plt.figure(40,figsize=(18,24))
     
     i_0 = 22
     i_f = 37
     
-    angles = [r'$\pi/6$',r'$\pi/3$','0\'']
+    angles = ['0',r'$\pi/6$',r'$\pi/3$','0\'']
     
-    for i in range(1,4):
-        # Arrays are already (N, ny, nx), no reshaping needed
-        plt.figure(1,figsize=(15,20))
-        shifts, CrossCorr = compute_cross_corrs(
-            omni_maps[0]['rate maps'],
-            omni_maps[i]['rate maps'],
-            smooth=SMOOTH,sd=sd)
-        shifts_y.append((shifts[:,0]) * L / nfr)
-        shifts_x.append(shifts[:,1] * L / nfr)    
+    for i in range(4):
+        if i>0:
+            # Arrays are already (N, ny, nx), no reshaping needed
+            plt.figure(1,figsize=(15,10))
+            shifts, CrossCorr = compute_cross_corrs(
+                omni_maps[0]['rate maps'],
+                omni_maps[i]['rate maps'],
+                smooth=SMOOTH,sd=sd)
+            shifts_y.append((shifts[:,0]) * L / nfr)
+            shifts_x.append(shifts[:,1] * L / nfr)    
+            
+            plt.subplot(2,3,i)
+            plt.imshow(CrossCorr.mean(axis=0),cmap='jet')#,origin='lower')
+            plt.axis('off')
+            
+            plt.subplot(2,3,i+3)
+            plt.imshow(CrossCorr.mean(axis=0)[i_0:i_f,i_0:i_f],cmap='jet')#,
+                       # origin='lower')
+            plt.axis('off')
+            
+            # shifts, CrossCorr = compute_cross_corrs(
+            #     conj_maps[0]['rate maps'],
+            #     conj_maps[i]['rate maps'],
+            #     smooth=SMOOTH,sd=sd)
+            # shifts_conj_y.append((shifts[:,0]) * L / nfr)
+            # shifts_conj_x.append(shifts[:,1] * L / nfr)    
         
-        plt.subplot(4,3,i)
-        plt.imshow(CrossCorr.mean(axis=0)[::-1,:],cmap='jet')
-        plt.axis('off')
-        
-        plt.subplot(4,3,i+3)
-        plt.imshow(CrossCorr.mean(axis=0)[::-1,:][i_0:i_f,i_0:i_f],cmap='jet')
-        plt.axis('off')
-        
-        shifts, CrossCorr = compute_cross_corrs(
-            conj_maps[0]['rate maps'],
-            conj_maps[i]['rate maps'],
-            smooth=SMOOTH,sd=sd)
-        shifts_conj_y.append((shifts[:,0]) * L / nfr)
-        shifts_conj_x.append(shifts[:,1] * L / nfr)    
-        
-        plt.subplot(4,3,i+6)
+        plt.figure(2,figsize=(20,10))
+        plt.subplot(2,4,i+1)
         idx = np.where(omni_maps[i]['spiking maps']['neuron_idx'] == NEURON_IDX)[0]
         idx = omni_maps[i]['spiking maps']['time_idx'][idx]
-        plt.plot(traj_list[i][:,0],traj_list[i][:,1])
+        plt.plot(traj_list[i][:,0],traj_list[i][:,1],color='gray',alpha=0.7)
         plt.plot(traj_list[i][idx,0],traj_list[i][idx,1],'.',
                  color='r',markersize=10)
         plt.axis('off')
-        plt.subplot(4,3,i+9)
+        plt.title(angles[i])
+        plt.subplot(2,4,i+5)
         plt.imshow(gaussian_filter(omni_maps[i]['rate maps'][NEURON_IDX],
-                                   (sd,sd),mode='constant', cval=0)[::-1,:],cmap='jet')
+                                   (sd,sd),mode='constant', cval=0),
+                   cmap='jet',origin='lower')
         plt.axis('off')
-        
-        # plt.figure(2,figsize=(5,5))
-        # plt.subplot(3,3,i)
-        # plt.imshow(CrossCorr.mean(axis=0)[::-1,:],cmap='jet')
-        # plt.axis('off')
-        
-        # plt.subplot(3,3,i+3)
-        # plt.imshow(CrossCorr.mean(axis=0)[::-1,:][i_0:i_f,i_0:i_f],cmap='jet')
-        # plt.axis('off')
-        
-        # plt.subplot(3,3,i+6)
-        # idx = np.where(conj_maps[i]['spiking maps']['neuron_idx'] == NEURON_IDX)[0]
-        # idx = conj_maps[i]['spiking maps']['time_idx'][idx]
-        # plt.plot(traj[:,0],traj[:,1])
-        # plt.plot(traj[idx,0],traj[idx,1],'.')
-        # plt.axis('off')
         
         
     plt.show()
-        
-    plt.figure(figsize=(10,10))
+    
+    stripplot = False
+    plt.figure(3,figsize=(10,10))
     plt.subplot(221)
     sns.boxplot(shifts_x,fill=False)
-    sns.stripplot(shifts_x)
-    plt.title('Omni x shift')
-    plt.xticks([0,1,2],labels=angles)
+    if stripplot:
+        sns.stripplot(shifts_x)
+    plt.plot([-1,3],[0,0],'--k')
+    F, P = f_oneway(shifts_x[0],shifts_x[1],shifts_x[2])
+    plt.title(f'Omni x shift, Anova p-val={P:.2e}')
+    plt.xlim([-.5,2.5])
+    plt.xticks([0,1,2],labels=angles[1:])
     
     plt.subplot(222)
     sns.boxplot(shifts_y,fill=False)
-    sns.stripplot(shifts_y)
-    plt.title('Omni y shift')
-    plt.xticks([0,1,2],labels=angles)
+    if stripplot:
+        sns.stripplot(shifts_y)
+    plt.plot([-1,3],[0,0],'--k')
+    F, P = f_oneway(shifts_y[0],shifts_y[1],shifts_y[2])
+    plt.title(f'Omni y shift, Anova p-val={P:.2e}')
+    plt.xlim([-.5,2.5])
+    plt.xticks([0,1,2],labels=angles[1:])
+    # plt.ylim([-2.5,6])
     
-    plt.subplot(223)
-    sns.boxplot(shifts_conj_x,fill=False)
-    sns.stripplot(shifts_conj_x)
-    plt.title('Conj x shift')
-    plt.xticks([0,1,2],labels=angles)
+    # plt.subplot(223)
+    # sns.boxplot(shifts_conj_x,fill=False)
+    # if stripplot:
+    #     sns.stripplot(shifts_conj_x)
+    # plt.plot([-1,3],[0,0],'--k')
+    # F, P = f_oneway(shifts_conj_x[0],shifts_conj_x[1],shifts_conj_x[2])
+    # plt.title(f'Conj x shift, Anova p-val={P:.2e}')
+    # plt.xlim([-.5,2.5])
+    # plt.xticks([0,1,2],labels=angles[1:])
     
-    plt.subplot(224)
-    sns.boxplot(shifts_conj_y,fill=False)
-    sns.stripplot(shifts_conj_y)
-    plt.title('Conj y shift')
-    plt.xticks([0,1,2],labels=angles)
+    # plt.subplot(224)
+    # sns.boxplot(shifts_conj_y,fill=False)
+    # if stripplot:
+    #     sns.stripplot(shifts_conj_y)
+    # plt.plot([-1,3],[0,0],'--k')
+    # F, P = f_oneway(shifts_conj_y[0],shifts_conj_y[1],shifts_conj_y[2])
+    # plt.title(f'Conj y shift, Anova p-val={P:.2e}')
+    # plt.xlim([-.5,2.5])
+    # plt.xticks([0,1,2],labels=angles[1:])
     
     plt.tight_layout()
     plt.show()
     
-    # plt.figure(figsize=(10,10))
-    # idx = [1,2,3]
-    
-    # # Arrays are already 2D (ny, nx), no reshaping needed
-    # rm0 = gaussian_filter(omni_maps[0][NEURON_IDX], (1,1),
-    #                       mode='constant', cval=0)
-    
-    # for i in range(3):
-    #     rm1 = omni_maps[idx[i]][NEURON_IDX]
-    #     rm1_conj = conj_maps[idx[i]][NEURON_IDX]
-        
-    #     if SMOOTH:
-    #         rm1 = gaussian_filter(rm1,(sd,sd),
-    #                               mode='constant', cval=0)[:,:]
-    #         rm1_conj = gaussian_filter(rm1_conj,(sd,sd),
-    #                                    mode='constant', cval=0)[:,:]
-                                       
-    #     plt.subplot(3,3,i+1)
-    #     plt.imshow(correlate2d((rm0-rm0.mean())/np.std(rm0),
-    #                            (rm1-rm1.mean())/np.std(rm1))[::-1,:], cmap='jet')
-    #     plt.axis('off')
-    #     plt.title(f'Angle {angles[i]}',fontsize=15)
-        
-    #     plt.subplot(3,3,3+i+1)
-    #     plt.imshow(rm1,cmap='jet')
-    #     plt.title(f'Omni Mean fr {omni_maps[idx[i]][0].mean():.4f}',
-    #               fontsize=15)
-    #     plt.axis('off')
-        
-    #     plt.subplot(3,3,6+i+1)
-    #     plt.imshow(rm1_conj,cmap='jet')
-    #     plt.title(f'Conj Mean fr {conj_maps[idx[i]][0].mean():.4f}',
-    #               fontsize=15)
-    #     plt.axis('off')
         
     with open(os.path.join(path2load_0,'parameters_complete.pkl'),'rb') as file:
         parameters_complete = pickle.load(file)

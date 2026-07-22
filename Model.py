@@ -18,8 +18,8 @@ import pickle
 from numbers import Number
 #%% Set simulation and network parameters
 parser = argparse.ArgumentParser()
-parser.add_argument("--path2save", type=str, default='GridShift-FiringRate-num0')#'GridShift-Minimal-num')
-parser.add_argument("--firingrate", type=str, default='True')#'GridShift-Minimal-num')
+parser.add_argument("--path2save", type=str, default='GridShift-Trial-num0')#'GridShift-Minimal-num')
+parser.add_argument("--firingrate", type=str, default='False')#'GridShift-Minimal-num')
 parser.add_argument("--l_asym", type=float, default=4)
 parser.add_argument("--dt", type=float, default=.01)
 parser.add_argument("--inclination_angle", 
@@ -33,7 +33,7 @@ parser.add_argument("--N_vis_sqrt", type=int, default=40)
 parser.add_argument("--N_conj_sqrt", type=int, default=10)
 parser.add_argument("--N_omni_sqrt", type=int, default=10)
 parser.add_argument("--hd_modules", type=int, default=8)
-parser.add_argument("--input_std", type=float, default=3)
+parser.add_argument("--input_std", type=float, default=4)
 parser.add_argument("--angle_std", type=float, default=1.2)
 parser.add_argument("--k", type=float, default=.01)
 parser.add_argument("--m", type=float, default=.5)
@@ -44,7 +44,7 @@ parser.add_argument("--A_hd", type=float, default=1)
 parser.add_argument("--A_vest", type=float, default=15)
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--nfr", type=int, default=30)
-parser.add_argument("--thresh", type=float, nargs = 2, default= [0,0] )
+parser.add_argument("--thresh", type=float, nargs = 2, default= [0,150] )
 parser.add_argument("--ACTIVATION_EXP", type=float, default = 2)
 
 args = parser.parse_args()
@@ -65,10 +65,10 @@ hd_modules = args.hd_modules
 N_vis = N_vis_sqrt ** 2
 
 N_conj_sqrt_x = 0 + N_conj_sqrt
-N_conj_sqrt_y = int(N_conj_sqrt * jnp.sin(jnp.pi/3))
+N_conj_sqrt_y = int(N_conj_sqrt +0* jnp.sin(jnp.pi/3))
 N_conj = N_conj_sqrt_x * N_conj_sqrt_y * hd_modules
 N_omni_sqrt_x = 0 + N_omni_sqrt
-N_omni_sqrt_y = int(N_omni_sqrt * jnp.sin(jnp.pi/3))
+N_omni_sqrt_y = int(N_omni_sqrt +0* jnp.sin(jnp.pi/3))
 N_omni = N_omni_sqrt_x * N_omni_sqrt_y
 
 input_std = args.input_std
@@ -131,11 +131,11 @@ for i in range(1,hd_modules):
 
 # Visual feedforward input to conjunctive cells
 Wvis_conj = build_feedforward_connectivity(pos, X_phase_conj,
-                                           input_std, l_torus)**2
+                                           input_std, l_torus)
 
 # Recurrent connectivity between conjunctive cells
 Wrec_conj = build_torus_connectivity(X_phase_conj, X_phase_conj,
-                                     input_std, l_torus, l_asym = 0)
+                                     input_std, l_torus, l_asym = 0) * gaussian(pref_hd,pref_hd.T,angle_std,jnp.pi*2)
 
 # Feedforward input from conjunctive to omnidirectional cells
 Wconj_omni = jnp.zeros((N_omni,N_conj))
@@ -143,6 +143,7 @@ for i in range(hd_modules):
     idx = jnp.arange(i*N_conj_sqrt_x*N_conj_sqrt_y,(i+1)*N_conj_sqrt_x*N_conj_sqrt_y)
     Wconj_omni = Wconj_omni.at[:,idx].set(build_torus_connectivity(X_phase_conj_dummy, X_phase_omni, input_std, l_torus, l_asym = l_asym, hd_pre=pref_hd[idx[0],0]))
 
+# Wconj_omni = Wconj_omni**2
 #%% Initiate neural variables
 # # Anti Rotate
 # pos = jnp.column_stack((-x.ravel() * jnp.cos(-jnp.pi/5) + y.ravel() * jnp.sin(-jnp.pi/5),

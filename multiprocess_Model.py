@@ -78,9 +78,9 @@ if __name__ == "__main__":
     num = 2
     firingrate = 'False'
     periodicities = [25]#,30,35,40]
-    asymmetries = [4]
+    asymmetries = [4]#[4.5]
     inclination_angs = [0,jnp.pi/6,jnp.pi/3,0]
-    L = 60
+    L = 50
 
     path2save0 = os.path.split(os.getcwd())[0]    
     if firingrate == 'True':
@@ -107,7 +107,7 @@ if __name__ == "__main__":
                     pickle.dump(parameters,file)
                 
                 run_job(path2save, d_asym, l_torus, incl_ang, 
-                        seed = i_incl*5 + 80,
-                        input_std =4, k=.01, gain = 1, nfr = 30, 
-                        thresh=[0,300], hd_modules=8,
+                        seed = i_incl*5 + 78,
+                        input_std =5.2, k=.01, gain = 1.2, nfr = 30, 
+                        thresh=[0,32 + (20/2 + 175)*jnp.sin(incl_ang)], hd_modules=8,
                         firingrate=firingrate, ACTIVATION_EXP=2)
