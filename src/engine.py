@@ -75,7 +75,7 @@ def _cann_dynamics(U, V, fU, W_ff, W_rec, I_vis, I_hd, neural_params, thresh=0):
     # Firing rate
     U_pos = jnp.maximum(U-fun_thresh(U), 0)
     norm_sq = jnp.sum(U_pos ** g)
-    fU = gain * (U_pos ** g) / (1 + k * norm_sq)
+    fU = 10 * gain * (U_pos ** g) / (1 + k * norm_sq)
     
     I_input = I_hd * (W_ff @ I_vis + W_rec @ fU)
     # Dynamics
@@ -128,7 +128,8 @@ def _omnidirectional_dynamics(U, V, W_ff, I_conj, I_vest, neural_params, thresh 
 # SIMULATION LOOPS
 # ---------------------------------------------------------
 
-def run_rate_simulation(U0, V0, weights, traj, neural_params, input_params, pos, pref_hd, steps, 
+def run_rate_simulation(U0, V0, weights, traj, neural_params, 
+                        input_params, pos, pref_hd, steps, 
                          nx=30, ny=30, thresh = 0):
     """Standard simulation with fixed weights and firing rate map tracking."""
     pi2 = 2 * jnp.pi
@@ -204,8 +205,9 @@ def run_rate_simulation(U0, V0, weights, traj, neural_params, input_params, pos,
     
     return U_conj, U_omni, V_conj, V_omni, fU_conj, rate_map_conj, rate_map_omni
 
-def run_spiking_simulation(rng_key, U0, V0, weights, traj, neural_params, 
-                                input_params, pos, pref_hd, steps, thresh=.5):
+def run_spiking_simulation_2sup(rng_key, U0, V0, weights, traj, neural_params, 
+                                input_params, pos, pref_hd, steps, thresh=.5,
+                                inclination_dir = jnp.pi/2):
     """Standard simulation saving spike counts over time using lax.scan."""
     pi2 = 2 * jnp.pi
     Wvis_conj, Wrec_conj, Wconj_omni = weights
@@ -233,8 +235,83 @@ def run_spiking_simulation(rng_key, U0, V0, weights, traj, neural_params,
         
         # traj_step[:-1] gives [x_pos, y_pos]
         I_vis = A_vis * gaussian2D(pos, traj_step[:-1][:, None], sR, L)
-        I_hd = A_hd * gaussian(pref_hd, hd, sHD * .5, pi2)
-        I_vest = 1 + A_vest * gaussian(pref_hd, 3 * jnp.pi/2, sHD, pi2)
+        I_hd = A_hd * gaussian(pref_hd, hd, sHD, pi2) 
+        I_vest = 1 + A_vest * gaussian(pref_hd, inclination_dir, sHD, pi2)
+        
+        dU_conj, dV_conj, fU_conj_next = _cann_dynamics(
+            U_conj, V_conj, fU_conj, Wvis_conj, Wrec_conj, I_vis, I_hd, neural_params,
+        thresh)
+        
+        dU_omni, dV_omni, fU_omni_next = _omnidirectional_dynamics(
+            U_omni, V_omni, Wconj_omni, fU_conj, I_vest, neural_params,
+        thresh)
+        
+        U_conj_next = U_conj + dt * dU_conj
+        V_conj_next = V_conj + dt * dV_conj
+        U_omni_next = U_omni + dt * dU_omni
+        V_omni_next = V_omni + dt * dV_omni
+        
+        # Generate Poisson spikes and cast to int8 to save RAM during the scan
+        # output shapes before flattening: (N_neurons, 1)
+        spikes_conj = random.poisson(subkey_conj, fU_conj_next * dt).astype(jnp.int8)
+        spikes_omni = random.poisson(subkey_omni, fU_omni_next * dt).astype(jnp.int8)
+        
+        new_carry = (key, U_conj_next, U_omni_next, V_conj_next, V_omni_next, fU_conj_next)
+        
+        # Output arrays to be stacked over time. We flatten them to (N,) first.
+        stacked_outputs = (spikes_conj[:, 0], spikes_omni[:, 0])
+        
+        return new_carry, stacked_outputs
+    
+    # Initialize the loop (spatial maps are removed)
+    init_carry = (rng_key, U_conj0, U_omni0, V_conj0, V_omni0, fU_conj0)
+    
+    # lax.scan iterates over the first dimension of `traj` (which is `steps`)
+    final_carry, (all_spikes_conj, all_spikes_omni) = lax.scan(step, init_carry, traj)
+    
+    # Unpack final state
+    _, U_conj, U_omni, V_conj, V_omni, fU_conj = final_carry
+    
+    # all_spikes_conj will have shape (steps, N_conj)
+    # all_spikes_omni will have shape (steps, N_omni)
+    
+    
+    return U_conj, U_omni, V_conj, V_omni, fU_conj, all_spikes_conj, all_spikes_omni
+
+def run_spiking_simulation_2deep(rng_key, U0, V0, weights, traj, neural_params, 
+                                input_params, pos, pref_hd, steps, thresh=.5,
+                                inclination_dir = 3*jnp.pi/2):
+    """Standard simulation saving spike counts over time using lax.scan."""
+    pi2 = 2 * jnp.pi
+    Wvis_conj, Wrec_conj, Wconj_omni = weights
+    
+    U_conj0, U_omni0 = U0
+    V_conj0, V_omni0 = V0
+    
+    tau_inv, tauv_inv, m, k, g, gain = neural_params
+    dt, sR, sHD, A_vis, A_hd, A_vest, L = input_params
+    
+    # Firing rate initialization
+    U_pos = jnp.maximum(U_conj0, 0) 
+    norm_sq = jnp.sum(U_pos ** g)
+    fU_conj0 = gain * (U_pos ** g) / (1 + k * norm_sq)
+    
+    # lax.scan passes the current element of `traj` directly to `traj_step`
+    def step(carry, traj_step):
+        key, U_conj, U_omni, V_conj, V_omni, fU_conj = carry
+        
+        # Split the key for this step
+        key, subkey_conj, subkey_omni = random.split(key, 3)
+        
+        # Unpack trajectory for this specific time step
+        x_pos, y_pos, hd = traj_step[0], traj_step[1], traj_step[2]
+        
+        # traj_step[:-1] gives [x_pos, y_pos]
+        I_vis = A_vis * gaussian2D(pos, traj_step[:-1][:, None], sR, L)
+        I_hd = A_hd * gaussian(pref_hd, hd, sHD, pi2) 
+        I_hd = I_hd * (1 + A_vest * gaussian(pref_hd, inclination_dir, 1.5 * sHD, pi2))
+        
+        I_vest = 1 + 0*pref_hd
         
         dU_conj, dV_conj, fU_conj_next = _cann_dynamics(
             U_conj, V_conj, fU_conj, Wvis_conj, Wrec_conj, I_vis, I_hd, neural_params,

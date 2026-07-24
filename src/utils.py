@@ -270,107 +270,107 @@ def generate_uniform_toroidal_phase_distribution(nx,ny,l):
         y = y.at[iy*nx:(iy+1)*nx].set(iy/ny*l*jnp.sin(jnp.pi/3))
     return x, y
 
-def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
-    """
-    Finds the sub-pixel shift by fitting a 2D quadratic to the
-    N x N neighborhood around the integer peak.
+# def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
+#     """
+#     Finds the sub-pixel shift by fitting a 2D quadratic to the
+#     N x N neighborhood around the integer peak.
 
-    Args:
-        corr_map (np.ndarray): The 2D cross-correlogram.
-        n (int, optional): The size of the neighborhood to fit.
-                           Must be an odd integer (e.g., 3, 5, 7).
-                           Defaults to 3 (a 3x3 grid).
-        search_radius_pixels (int, optional): If provided, only searches
-            for the peak within this pixel radius of the map's center.
-            This is used to ignore periodic side-peaks.
+#     Args:
+#         corr_map (np.ndarray): The 2D cross-correlogram.
+#         n (int, optional): The size of the neighborhood to fit.
+#                            Must be an odd integer (e.g., 3, 5, 7).
+#                            Defaults to 3 (a 3x3 grid).
+#         search_radius_pixels (int, optional): If provided, only searches
+#             for the peak within this pixel radius of the map's center.
+#             This is used to ignore periodic side-peaks.
 
-    Returns:
-        tuple (float, float): The sub-pixel spatial shift in (shift_y, shift_x).
-    """
-    if n < 3 or n % 2 == 0:
-        raise ValueError(f"n must be an odd integer >= 3, but got {n}")
+#     Returns:
+#         tuple (float, float): The sub-pixel spatial shift in (shift_y, shift_x).
+#     """
+#     if n < 3 or n % 2 == 0:
+#         raise ValueError(f"n must be an odd integer >= 3, but got {n}")
 
-    h = (n - 1) // 2
+#     h = (n - 1) // 2
 
-    # 1. Find integer peak (coarse search)
-    shape = corr_map.shape
-    center_y, center_x = shape[0] // 2, shape[1] // 2
+#     # 1. Find integer peak (coarse search)
+#     shape = corr_map.shape
+#     center_y, center_x = shape[0] // 2, shape[1] // 2
 
-    # ---RESTRICT SEARCH AREA ---
-    if search_radius_pixels is not None:
-        # Create a map to search, copying the original
-        search_map = corr_map.copy()
+#     # ---RESTRICT SEARCH AREA ---
+#     if search_radius_pixels is not None:
+#         # Create a map to search, copying the original
+#         search_map = corr_map.copy()
         
-        # Create coordinate grids
-        y, x = np.indices(shape)
+#         # Create coordinate grids
+#         y, x = np.indices(shape)
         
-        # Calculate distance from center for every pixel
-        dist_from_center = np.sqrt((y - center_y)**2 + (x - center_x)**2)
+#         # Calculate distance from center for every pixel
+#         dist_from_center = np.sqrt((y - center_y)**2 + (x - center_x)**2)
         
-        # Mask out all pixels *outside* the search radius
-        # by setting them to a very low value
-        search_map[dist_from_center > search_radius_pixels] = -np.inf
+#         # Mask out all pixels *outside* the search radius
+#         # by setting them to a very low value
+#         search_map[dist_from_center > search_radius_pixels] = -np.inf
         
-        # Find the peak on this new *masked* map
-        peak_y, peak_x = np.unravel_index(np.argmax(search_map), shape)
+#         # Find the peak on this new *masked* map
+#         peak_y, peak_x = np.unravel_index(np.argmax(search_map), shape)
         
-        if np.isinf(search_map[peak_y, peak_x]):
-            print("Warning: No peak found within search_radius. "
-                  "Returning (0,0) shift.")
-            return (0.0, 0.0)
+#         if np.isinf(search_map[peak_y, peak_x]):
+#             print("Warning: No peak found within search_radius. "
+#                   "Returning (0,0) shift.")
+#             return (0.0, 0.0)
             
-    else:
-        # Original behavior: find the global maximum
-        peak_y, peak_x = np.unravel_index(np.argmax(corr_map), shape)
-    # -----------------------
+#     else:
+#         # Original behavior: find the global maximum
+#         peak_y, peak_x = np.unravel_index(np.argmax(corr_map), shape)
+#     # -----------------------
     
-    # 2. Handle edge cases (UPDATED with h)
-    if (peak_y < h or peak_y >= shape[0] - h or
-        peak_x < h or peak_x >= shape[1] - h):
-        print(f"Warning: Peak is too close to border for {n}x{n} fit. "
-              "Returning integer-pixel shift.")
-        return (float(peak_y - center_y), float(peak_x - center_x))
+#     # 2. Handle edge cases (UPDATED with h)
+#     if (peak_y < h or peak_y >= shape[0] - h or
+#         peak_x < h or peak_x >= shape[1] - h):
+#         print(f"Warning: Peak is too close to border for {n}x{n} fit. "
+#               "Returning integer-pixel shift.")
+#         return (float(peak_y - center_y), float(peak_x - center_x))
 
-    # 3. Extract n x n neighborhood
-    z = corr_map[peak_y-h : peak_y+h+1, peak_x-h : peak_x+h+1]
+#     # 3. Extract n x n neighborhood
+#     z = corr_map[peak_y-h : peak_y+h+1, peak_x-h : peak_x+h+1]
     
-    # 4. Create design matrix 'A'
-    y, x = np.array(list(np.ndindex(n, n))).T - h
-    A = np.vstack([x**2, y**2, x*y, x, y, np.ones(n*n)]).T
+#     # 4. Create design matrix 'A'
+#     y, x = np.array(list(np.ndindex(n, n))).T - h
+#     A = np.vstack([x**2, y**2, x*y, x, y, np.ones(n*n)]).T
     
-    # 5. Solve for parameters
-    z_flat = z.flatten()
-    try:
-        p = la.lstsq(A, z_flat, rcond=None)[0]
-    except la.LinAlgError:
-        print("Warning: Linear algebra error. Returning integer shift.")
-        return (float(peak_y - center_y), float(peak_x - center_x))
+#     # 5. Solve for parameters
+#     z_flat = z.flatten()
+#     try:
+#         p = la.lstsq(A, z_flat, rcond=None)[0]
+#     except la.LinAlgError:
+#         print("Warning: Linear algebra error. Returning integer shift.")
+#         return (float(peak_y - center_y), float(peak_x - center_x))
 
-    a, b, c, d, e, f = p
+#     a, b, c, d, e, f = p
 
-    # 6. Find vertex
-    M = np.array([[2*a, c], [c, 2*b]])
-    v = np.array([-d, -e])
+#     # 6. Find vertex
+#     M = np.array([[2*a, c], [c, 2*b]])
+#     v = np.array([-d, -e])
     
-    try:
-        offsets = la.solve(M, v)
-        x_offset, y_offset = offsets
-    except la.LinAlgError:
-        print("Warning: Singular matrix in vertex calculation. Returning integer shift.")
-        return (float(peak_y - center_y), float(peak_x - center_x))
+#     try:
+#         offsets = la.solve(M, v)
+#         x_offset, y_offset = offsets
+#     except la.LinAlgError:
+#         print("Warning: Singular matrix in vertex calculation. Returning integer shift.")
+#         return (float(peak_y - center_y), float(peak_x - center_x))
 
-    # 7. Check if reasonable
-    if abs(x_offset) > h or abs(y_offset) > h:
-        print(f"Warning: Sub-pixel offset > {h}. Fit unstable. Returning integer shift.")
-        return (float(peak_y - center_y), float(peak_x - center_x))
+#     # 7. Check if reasonable
+#     if abs(x_offset) > h or abs(y_offset) > h:
+#         print(f"Warning: Sub-pixel offset > {h}. Fit unstable. Returning integer shift.")
+#         return (float(peak_y - center_y), float(peak_x - center_x))
             
-    # 8. Calculate final sub-pixel shift
-    subpixel_y = peak_y + y_offset
-    subpixel_x = peak_x + x_offset
-    final_shift_y = center_y - subpixel_y
-    final_shift_x = center_x - subpixel_x
+#     # 8. Calculate final sub-pixel shift
+#     subpixel_y = peak_y + y_offset
+#     subpixel_x = peak_x + x_offset
+#     final_shift_y = center_y - subpixel_y
+#     final_shift_x = center_x - subpixel_x
 
-    return (final_shift_y, final_shift_x)
+#     return (final_shift_y, final_shift_x)
 
 def compute_rate_maps_from_sparse(sparse_spikes, traj, selected_neurons, L, dt, nx=30, ny=30):
     """
@@ -433,6 +433,112 @@ def compute_rate_maps_from_sparse(sparse_spikes, traj, selected_neurons, L, dt, 
         rate_maps[i] = rate_map_2d
         
     return rate_maps
-    
+
+
+def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
+    """
+    Finds the sub-pixel shift by fitting a 2D quadratic to the
+    N x N neighborhood around the integer peak.
+
+    Args:
+        corr_map (np.ndarray): The 2D cross-correlogram, e.g.
+            correlate2d(rm1, rm2, mode='full', boundary='fill', fillvalue=0).
+        n (int, optional): The size of the neighborhood to fit.
+                           Must be an odd integer (e.g., 3, 5, 7).
+                           Defaults to 3 (a 3x3 grid).
+        search_radius_pixels (int, optional): If provided, only searches
+            for the peak within this pixel radius of the map's center.
+            This is used to ignore periodic side-peaks.
+
+    Returns:
+        tuple (float, float): The sub-pixel spatial shift (shift_y, shift_x),
+            defined as (center of corr_map) - (location of the peak) —
+            i.e. the shift you'd apply to rm1 so its feature lands on
+            rm2's feature, given corr_map = correlate2d(rm1, rm2).
+            This convention is now consistent across every return path.
+    """
+    if n < 3 or n % 2 == 0:
+        raise ValueError(f"n must be an odd integer >= 3, but got {n}")
+    h = (n - 1) // 2
+
+    # 1. Find integer peak (coarse search)
+    shape = corr_map.shape
+    center_y, center_x = shape[0] // 2, shape[1] // 2
+
+    # --- RESTRICT SEARCH AREA ---
+    if search_radius_pixels is not None:
+        # Create a map to search, copying the original
+        search_map = corr_map.copy()
+
+        # Create coordinate grids
+        y, x = np.indices(shape)
+
+        # Calculate distance from center for every pixel
+        dist_from_center = np.sqrt((y - center_y) ** 2 + (x - center_x) ** 2)
+
+        # Mask out all pixels *outside* the search radius
+        # by setting them to a very low value
+        search_map[dist_from_center > search_radius_pixels] = -np.inf
+
+        # Find the peak on this new *masked* map
+        peak_y, peak_x = np.unravel_index(np.argmax(search_map), shape)
+
+        if np.isinf(search_map[peak_y, peak_x]):
+            print("Warning: No peak found within search_radius. "
+                  "Returning (0,0) shift.")
+            return (0.0, 0.0)
+
+    else:
+        # Original behavior: find the global maximum
+        peak_y, peak_x = np.unravel_index(np.argmax(corr_map), shape)
+    # -----------------------
+
+    # 2. Handle edge cases (peak too close to border for an n x n fit)
+    if (peak_y < h or peak_y >= shape[0] - h or
+            peak_x < h or peak_x >= shape[1] - h):
+        print(f"Warning: Peak is too close to border for {n}x{n} fit. "
+              "Returning integer-pixel shift.")
+        # FIX: use (center - peak) to match the sign convention of the
+        # main sub-pixel return path below.
+        return (float(center_y - peak_y), float(center_x - peak_x))
+
+    # 3. Extract n x n neighborhood
+    z = corr_map[peak_y - h: peak_y + h + 1, peak_x - h: peak_x + h + 1]
+
+    # 4. Create design matrix 'A'
+    y, x = np.array(list(np.ndindex(n, n))).T - h
+    A = np.vstack([x**2, y**2, x * y, x, y, np.ones(n * n)]).T
+
+    # 5. Solve for parameters
+    z_flat = z.flatten()
+    try:
+        p = la.lstsq(A, z_flat, rcond=None)[0]
+    except la.LinAlgError:
+        print("Warning: Linear algebra error. Returning integer shift.")
+        return (float(center_y - peak_y), float(center_x - peak_x))
+    a, b, c, d, e, f = p
+
+    # 6. Find vertex
+    M = np.array([[2 * a, c], [c, 2 * b]])
+    v = np.array([-d, -e])
+
+    try:
+        offsets = la.solve(M, v)
+        x_offset, y_offset = offsets
+    except la.LinAlgError:
+        print("Warning: Singular matrix in vertex calculation. Returning integer shift.")
+        return (float(center_y - peak_y), float(center_x - peak_x))
+
+    # 7. Check if reasonable
+    if abs(x_offset) > h or abs(y_offset) > h:
+        print(f"Warning: Sub-pixel offset > {h}. Fit unstable. Returning integer shift.")
+        return (float(center_y - peak_y), float(center_x - peak_x))
+
+    # 8. Calculate final sub-pixel shift
+    subpixel_y = peak_y + y_offset
+    subpixel_x = peak_x + x_offset
+    final_shift_y = center_y - subpixel_y
+    final_shift_x = center_x - subpixel_x
+    return (final_shift_y, final_shift_x)
     
     

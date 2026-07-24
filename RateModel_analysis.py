@@ -25,7 +25,7 @@ def load_omni_maps(num, target_d_asym=0, target_l_torus=0, base_dir=None):
     if base_dir is None:
         base_dir = os.path.split(os.getcwd())[0]
         
-    sim_folder = os.path.join(base_dir, f'Simulation-num{num}')
+    sim_folder = os.path.join(base_dir, f'SimulationFiringRate-num{num}')
     
     if not os.path.exists(sim_folder):
         raise FileNotFoundError(f"Simulation directory not found: {sim_folder}")
@@ -81,7 +81,7 @@ def compute_cross_corrs(fr_maps0,fr_maps1,sd=2,smooth = False):
        
     shifts = np.zeros((fr_maps0.shape[0],2))
     for i in tqdm(range(fr_maps0.shape[0]), desc="Spatial Shift"):
-        sx, sy = find_spatial_shift_subpixel(CrossCorr[i], n = 7, search_radius_pixels = 7)#[:,::-1].T)
+        sy, sx = find_spatial_shift_subpixel(CrossCorr[i], n = 7, search_radius_pixels = 7)#[:,::-1].T)
         shifts[i,0], shifts[i,1] = sx, sy
     
     return shifts, CrossCorr
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     
     path2load = os.path.split(os.getcwd())[0]    
     # path2load = os.path.join(path2load,f'SimulationFiringRate-num{num}')
-    path2load = os.path.join(path2load,f'Simulation-num{num}')
+    path2load = os.path.join(path2load,f'SimulationFiringRate-num{num}')
 
     path2load = os.path.join(path2load,f'incl_ang{0}')
     with open(os.path.join(path2load,'parameters_reduced.pkl'),'rb') as file:
@@ -128,17 +128,19 @@ if __name__ == "__main__":
             omni_maps[0].reshape((N,nfr,nfr)),
             omni_maps[i].reshape((N,nfr,nfr)),
             smooth=SMOOTH,sd=sd)
-        shifts_y.append((shifts[:,0]) * L / nfr)
-        shifts_x.append(shifts[:,1] * L / nfr)    
+        shifts_y.append((shifts[:,1]) * L / nfr)
+        shifts_x.append(shifts[:,0] * L / nfr)    
         
         
         plt.subplot(4,3,i)
-        plt.imshow(CrossCorr.mean(axis=0)[::-1,:],cmap='jet')
+        plt.imshow(CrossCorr.mean(axis=0),
+                   origin='lower',cmap='jet')
         plt.axis('off')
         
         
         plt.subplot(4,3,i+3)
-        plt.imshow(CrossCorr.mean(axis=0)[::-1,:][i_0:i_f,i_0:i_f],cmap='jet')
+        plt.imshow(CrossCorr.mean(axis=0)[i_0:i_f,i_0:i_f],
+                   origin='lower',cmap='jet')
         plt.axis('off')
         
         
@@ -146,16 +148,19 @@ if __name__ == "__main__":
             conj_maps[0].reshape((N_conj,nfr,nfr)),
             conj_maps[i].reshape((N_conj,nfr,nfr)),
             smooth=SMOOTH,sd=sd)
-        shifts_conj_y.append((shifts[:,0]) * L / nfr)
-        shifts_conj_x.append(shifts[:,1] * L / nfr)    
+        shifts_conj_y.append((shifts[:,1]) * L / nfr)
+        shifts_conj_x.append(shifts[:,0] * L / nfr)    
         
         plt.subplot(4,3,i+6)
-        plt.imshow(CrossCorr.mean(axis=0)[::-1,:],cmap='jet')
+        plt.imshow(CrossCorr.mean(axis=0),cmap='jet',
+                   origin='lower')
         plt.axis('off')
         
         
         plt.subplot(4,3,i+9)
-        plt.imshow(CrossCorr.mean(axis=0)[::-1,:][i_0:i_f,i_0:i_f],cmap='jet')
+        plt.imshow(CrossCorr.mean(axis=0)[i_0:i_f,i_0:i_f],
+                   origin='lower',
+                   cmap='jet')
         plt.axis('off')
     plt.show()
         

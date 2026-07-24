@@ -46,11 +46,14 @@ parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--nfr", type=int, default=30)
 parser.add_argument("--thresh", type=float, nargs = 2, default= [0,150] )
 parser.add_argument("--ACTIVATION_EXP", type=float, default = 2)
+parser.add_argument("--superficial", type=str, default = 'True')
+parser.add_argument("--inclination_dir", type=float, default = 'inclination_dir')
 
 args = parser.parse_args()
 
 path2save = args.path2save
 firingrate = args.firingrate
+superficial = args.superficial
 
 inclination_angle = args.inclination_angle
 L = args.L #arena size
@@ -60,6 +63,7 @@ N_vis_sqrt = args.N_vis_sqrt
 N_conj_sqrt = args.N_conj_sqrt
 N_omni_sqrt = args.N_omni_sqrt
 hd_modules = args.hd_modules
+inclination_dir = args.inclination_dir
 
 
 N_vis = N_vis_sqrt ** 2
@@ -198,10 +202,19 @@ if firingrate == 'True':
     np.save(os.path.join(path2save,'true_rate_map_omni'),true_rate_map_omni)
 else:
     _, _, _, _, KEY = random.split(random.PRNGKey(seed),5)
-    U_conj, U_omni, V_conj, V_omni, fU_conj, spikes_conj, spikes_omni = run_spiking_simulation(KEY, (U_conj, U_omni), (V_conj, V_omni), 
-                                                                                                 (Wvis_conj, Wrec_conj, Wconj_omni), 
-                                                                                                 traj, neural_params,                                                                                        input_params, pos, pref_hd, steps,
-                                                                                                 thresh)
+    
+    if superficial == 'True':
+        print('2sup function')
+        U_conj, U_omni, V_conj, V_omni, fU_conj, spikes_conj, spikes_omni = run_spiking_simulation_2sup(KEY, (U_conj, U_omni), (V_conj, V_omni), 
+                                                                                                     (Wvis_conj, Wrec_conj, Wconj_omni), 
+                                                                                                     traj, neural_params,                                                                                        input_params, pos, pref_hd, steps,
+                                                                                                     thresh, inclination_dir)
+    else:
+        print('2deep function')
+        U_conj, U_omni, V_conj, V_omni, fU_conj, spikes_conj, spikes_omni = run_spiking_simulation_2deep(KEY, (U_conj, U_omni), (V_conj, V_omni), 
+                                                                                                     (Wvis_conj, Wrec_conj, Wconj_omni), 
+                                                                                                     traj, neural_params,                                                                                        input_params, pos, pref_hd, steps,
+                                                                                                     thresh, inclination_dir)
     
     # Convert JAX array to NumPy
     dense_spikes_omni = np.array(spikes_omni)
@@ -256,7 +269,8 @@ parameters = {
     "A_hd":A_hd,
     "A_vest":A_vest,
     "seed":seed,
-    "thresh":thresh}
+    "thresh":thresh,
+    "inclination_dir":inclination_dir}
 
 with open(os.path.join(path2save,'parameters_complete.pkl'),'wb') as file:
     pickle.dump(parameters,file)

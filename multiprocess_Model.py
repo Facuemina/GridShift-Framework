@@ -21,8 +21,9 @@ def run_job(path2save, l_asym, l_torus, inclination_angle,
             A_vis = 30, A_hd = 1, A_vest = 15, seed = 0,
             tau = 0.01, tauv = 0.1, input_std = 3,
             angle_std = 1.2, hd_modules = 8, nfr = 30, 
-            thresh=0, ACTIVATION_EXP=2, firingrate = False
-            ):
+            thresh=0, ACTIVATION_EXP=2, firingrate = False,
+            superficial = 'False',
+            inclination_dir = np.pi/2):
     # Call the original script with extra args
     env = os.environ.copy()
     cmd = [
@@ -53,7 +54,9 @@ def run_job(path2save, l_asym, l_torus, inclination_angle,
         f"--A_vest={A_vest}",
         f"--seed={seed}",
         f"--nfr={nfr}",
-        f"--ACTIVATION_EXP={ACTIVATION_EXP}"
+        f"--ACTIVATION_EXP={ACTIVATION_EXP}",
+        f"--superficial={superficial}",
+        f"--inclination_dir={inclination_dir}"
     ]
     
     # Dynamically append thresh so argparse (nargs=2) reads it correctly
@@ -75,39 +78,77 @@ if __name__ == "__main__":
     set_start_method("spawn")
 
     # parameter grid
-    num = 2
+    num = 3
     firingrate = 'False'
     periodicities = [25]#,30,35,40]
-    asymmetries = [4]#[4.5]
+    asymmetries = [5.5]#[4]
     inclination_angs = [0,jnp.pi/6,jnp.pi/3,0]
     L = 50
-
-    path2save0 = os.path.split(os.getcwd())[0]    
-    if firingrate == 'True':
-        folder ='FiringRate'
-    else:
-        folder = 'Spiking'
-    path2save0 = os.path.join(path2save0,f'Simulation{folder}-num{num}')
     
-    if not os.path.exists(path2save0):
-        os.mkdir(path2save0)
+    superficial = 'False'
+    
+    for superficial in ['True', 'False']:
+        path2save0 = os.path.split(os.getcwd())[0]    
+        if firingrate == 'True':
+            folder ='FiringRate'
+        else:
+            folder = 'Spiking'
+            if superficial == 'True':
+                folder += 'Superficial'
+            else:
+                folder += 'Deep'
+        path2save0 = os.path.join(path2save0,f'Simulation{folder}-num{num}')
         
-    for l_torus in periodicities:
-        for d_asym in asymmetries:
-            for i_incl, incl_ang in tqdm(enumerate(inclination_angs)):
-        
-                parameters = {'d_asym': d_asym,
-                              'inclination_angle': i_incl,
-                              'l': l_torus, 'L': L}
-                
-                path2save = os.path.join(path2save0,f'incl_ang{i_incl}')
-                if not os.path.exists(path2save):
-                    os.mkdir(path2save)
-                with open(os.path.join(path2save,'parameters_reduced.pkl'),'wb') as file:
-                    pickle.dump(parameters,file)
-                
-                run_job(path2save, d_asym, l_torus, incl_ang, 
-                        seed = i_incl*5 + 78,
-                        input_std =5.2, k=.01, gain = 1.2, nfr = 30, 
-                        thresh=[0,32 + (20/2 + 175)*jnp.sin(incl_ang)], hd_modules=8,
-                        firingrate=firingrate, ACTIVATION_EXP=2)
+        if not os.path.exists(path2save0):
+            os.mkdir(path2save0)
+        print(path2save0)
+        for l_torus in periodicities:
+            for d_asym in asymmetries:
+                for i_incl, incl_ang in tqdm(enumerate(inclination_angs)):
+            
+                    parameters = {'d_asym': d_asym,
+                                  'inclination_angle': i_incl,
+                                  'l': l_torus, 'L': L}
+                    
+                    path2save = os.path.join(path2save0,f'incl_ang{i_incl}')
+                    if not os.path.exists(path2save):
+                        os.mkdir(path2save)
+                    with open(os.path.join(path2save,'parameters_reduced.pkl'),'wb') as file:
+                        pickle.dump(parameters,file)
+                    
+                    if superficial == 'True':
+                        A_vest = 15
+                        THRESH = [120, 400 + (127*A_vest)*jnp.sin(incl_ang)]
+                        input_std = 6
+                        angle_std = 2#1.6#1.2
+                        gain = 1.2
+                        inclination_dir = -np.pi/2
+                        
+                    elif superficial == 'False':
+                        THRESH = [100 + 600*jnp.sin(incl_ang),
+                                  350 + 20 * jnp.sin(incl_ang)]
+                        input_std = 6
+                        angle_std = 2.5
+                        gain = 1.2
+                        A_vest = 15
+                        inclination_dir = -np.pi/2
+                        
+                    else:
+                        THRESH = [0,
+                                  100 * jnp.sin(incl_ang)]
+                        input_std = 4
+                        angle_std = 1.2
+                        gain = 1
+                        A_vest = 15
+                    
+                    run_job(path2save, d_asym, l_torus, incl_ang, 
+                            seed = i_incl*5 + 80,#78,
+                            input_std =input_std, k=.01, gain = gain, nfr = 30, 
+                            thresh=THRESH, 
+                            hd_modules=8,
+                            firingrate=firingrate, ACTIVATION_EXP=2,
+                            m=0.3,
+                            angle_std=angle_std,
+                            superficial = superficial,
+                            A_vest = A_vest,
+                            inclination_dir = inclination_dir)
