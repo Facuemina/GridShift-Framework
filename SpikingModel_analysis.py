@@ -15,7 +15,7 @@ from tqdm import tqdm
 from src.utils import find_spatial_shift_subpixel
 import seaborn as sns
 from scipy.stats import f_oneway, ttest_ind
-
+import pandas as pd
 #%%
 def compute_rate_maps_from_sparse(sparse_spikes, traj, selected_neurons, L, dt, nx=30, ny=30):
     """
@@ -164,13 +164,45 @@ def compute_cross_corrs(fr_maps0,fr_maps1,sd=2,smooth = False):
     
     return shifts, CrossCorr
 
+#%% SPATIAL SHIFTS BY HEAD DIRECTION (UP vs DOWN)
+
+def compute_directional_rate_maps(spiking_maps, traj, is_cond, num_neurons, L, nx=30, ny=30):
+    """Computes rate maps filtering by a specific trajectory condition (e.g., HD range)."""
+    x_idx = np.clip(np.floor((traj[:, 0] / L) * nx).astype(int), 0, nx - 1)
+    y_idx = np.clip(np.floor((traj[:, 1] / L) * ny).astype(int), 0, ny - 1)
+    spatial_idx = y_idx * nx + x_idx
+
+    # Occupancy for the specific condition
+    occ = np.bincount(spatial_idx[is_cond], minlength=nx * ny)
+    safe_occ = np.where(occ > 0, occ, 1.0)
+
+    t_idx = spiking_maps['time_idx']
+    n_idx = spiking_maps['neuron_idx']
+
+    # Filter spikes that occurred during the condition
+    valid_spikes_mask = is_cond[t_idx]
+    t_idx_cond = t_idx[valid_spikes_mask]
+    n_idx_cond = n_idx[valid_spikes_mask]
+    spike_spatial_idx = spatial_idx[t_idx_cond]
+
+    maps = np.zeros((num_neurons, ny, nx))
+    for neuron_id in range(num_neurons):
+        mask = (n_idx_cond == neuron_id)
+        spike_map = np.bincount(spike_spatial_idx[mask], minlength=nx * ny)
+        rm = (spike_map / safe_occ).reshape(ny, nx)
+        rm[occ.reshape(ny, nx) == 0] = 0 
+        maps[neuron_id] = rm
+        
+    return maps
+
+   
 #%%
 if __name__ == "__main__":
     #LISTA DE BUENOS: 10
-    num = 3
-    superficial = 'True'
+    num = 1
+    superficial = 'False'
     SMOOTH = True
-    NEURON_IDX = 78#64, 86, 31,71np.random.randint(100)
+    NEURON_IDX = 78#78#64, 86, 31,71np.random.randint(100)
     
     path2load = os.path.split(os.getcwd())[0]    
     if superficial == 'True':
@@ -203,7 +235,7 @@ if __name__ == "__main__":
     
     shifts_conj_x = []
     shifts_conj_y = []
-    sd = 1.8#2.5
+    sd = 2#2.5
     plt.figure(40,figsize=(18,24))
     
     i_0 = 22
@@ -214,6 +246,7 @@ if __name__ == "__main__":
     np.random.seed(32)
     conj_idx = np.random.permutation(N_conj)[:100]
     
+#%% FIRING RATE MAPS, CROSS CORRELATIONS AND SPIKING MAPS
     for i in range(4):
         shape = omni_maps[i]['rate maps'].shape
         mean_fr_omni.append(omni_maps[i]['rate maps'].reshape((N,shape[1]*shape[2])).mean(axis=1))
@@ -277,12 +310,13 @@ if __name__ == "__main__":
                    cmap='jet',origin='lower')
         plt.axis('off')
         plt.title(f'Max Fr: {RM.max():.2f}, Mean Fr: {RM.mean():.2f}')
-        
-        
+                
     plt.show()
-    
+
+#%% SPATIAL SHIFTS    
     stripplot = False
     plt.figure(4,figsize=(10,10))
+    ## OMNIDIRECTIONAL CELLS
     plt.subplot(221)
     sns.boxplot(shifts_x,fill=False)
     if stripplot:
@@ -304,6 +338,7 @@ if __name__ == "__main__":
     plt.xticks([0,1,2],labels=angles[1:])
     # plt.ylim([-2.5,6])
     
+    ## CONJUNCTIVE CELLS
     plt.subplot(223)
     sns.boxplot(shifts_conj_x,fill=False)
     if stripplot:
@@ -327,6 +362,8 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
     
+#%% MEAN FIRING RATE ACROSS SESSIONS
+    ## OMNIDIRECTIONAL CELLS    
     plt.figure(5,figsize=(10,5))
     plt.subplot(121)
     plt.boxplot(mean_fr_omni)
@@ -340,6 +377,8 @@ if __name__ == "__main__":
     plt.title(f'Conj FR, Anova p-val={P:.2e}')
     plt.boxplot(mean_fr_conj)
     plt.show()
+    
+    ## CONJUNCTIVE CELLS   
     with open(os.path.join(path2load_0,'parameters_complete.pkl'),'rb') as file:
         parameters_complete = pickle.load(file)
         
@@ -370,7 +409,80 @@ if __name__ == "__main__":
     plt.tight_layout()
         
         
+    #%%
+    print("Computing Directional Rate Maps and Shifts...")
     
+    omni_up, omni_down = [], []
+    conj_up, conj_down = [], []
+
+    # 1. Compute Up and Down rate maps for all sessions
+    for i in range(4):
+        hd = np.mod(traj_list[i][:, 2], 2 * np.pi)
+        is_up = (hd >= 0) & (hd < np.pi)
+        is_down = (hd >= np.pi) & (hd < 2 * np.pi)
+
+        omni_up.append(compute_directional_rate_maps(omni_maps[i]['spiking maps'], traj_list[i], is_up, N, L, nx=nfr, ny=nfr))
+        omni_down.append(compute_directional_rate_maps(omni_maps[i]['spiking maps'], traj_list[i], is_down, N, L, nx=nfr, ny=nfr))
+
+        conj_up.append(compute_directional_rate_maps(conj_maps[i]['spiking maps'], traj_list[i], is_up, N_conj, L, nx=nfr, ny=nfr))
+        conj_down.append(compute_directional_rate_maps(conj_maps[i]['spiking maps'], traj_list[i], is_down, N_conj, L, nx=nfr, ny=nfr))
+
+    # 2. Compute cross-correlograms and spatial shifts against baseline (Session 0)
+    data_shifts = []
+    session_labels = angles[1:]  # [pi/6, pi/3, 0']
+
+    for i, ses_label in enumerate(session_labels, start=1):
+        # Omni Up
+        s_up, _ = compute_cross_corrs(omni_up[0], omni_up[i], smooth=SMOOTH, sd=sd)
+        # Omni Down
+        s_down, _ = compute_cross_corrs(omni_down[0], omni_down[i], smooth=SMOOTH, sd=sd)
+        
+        for sx, sy in zip(s_up[:, 0] * L / nfr, s_up[:, 1] * L / nfr):
+            data_shifts.append({'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 'Direction': 'Up [0, $\pi$)', 'Type': 'Omni'})
+        for sx, sy in zip(s_down[:, 0] * L / nfr, s_down[:, 1] * L / nfr):
+            data_shifts.append({'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 'Direction': 'Down [$\pi$, 2$\pi$)', 'Type': 'Omni'})
+
+        # Conj Up (subset indexing applied as in the original code)
+        s_c_up, _ = compute_cross_corrs(conj_up[0][conj_idx], conj_up[i][conj_idx], smooth=SMOOTH, sd=sd)
+        # Conj Down
+        s_c_down, _ = compute_cross_corrs(conj_down[0][conj_idx], conj_down[i][conj_idx], smooth=SMOOTH, sd=sd)
+        
+        for sx, sy in zip(s_c_up[:, 0] * L / nfr, s_c_up[:, 1] * L / nfr):
+            data_shifts.append({'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 'Direction': 'Up [0, $\pi$)', 'Type': 'Conj'})
+        for sx, sy in zip(s_c_down[:, 0] * L / nfr, s_c_down[:, 1] * L / nfr):
+            data_shifts.append({'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 'Direction': 'Down [$\pi$, 2$\pi$)', 'Type': 'Conj'})
+
+    df_shifts = pd.DataFrame(data_shifts)
+
+    # 3. Plotting the paired distributions
+    plt.figure(7, figsize=(14, 12))
+
+    # Omni X
+    plt.subplot(2, 2, 1)
+    sns.boxplot(data=df_shifts[df_shifts['Type'] == 'Omni'], x='Session', y='Shift X', hue='Direction', fill=False)
+    plt.axhline(0, color='k', linestyle='--')
+    plt.title('Omnidirectional Cells - Shift X')
+
+    # Omni Y
+    plt.subplot(2, 2, 2)
+    sns.boxplot(data=df_shifts[df_shifts['Type'] == 'Omni'], x='Session', y='Shift Y', hue='Direction', fill=False)
+    plt.axhline(0, color='k', linestyle='--')
+    plt.title('Omnidirectional Cells - Shift Y')
+
+    # Conj X
+    plt.subplot(2, 2, 3)
+    sns.boxplot(data=df_shifts[df_shifts['Type'] == 'Conj'], x='Session', y='Shift X', hue='Direction', fill=False)
+    plt.axhline(0, color='k', linestyle='--')
+    plt.title('Conjunctive Cells - Shift X')
+
+    # Conj Y
+    plt.subplot(2, 2, 4)
+    sns.boxplot(data=df_shifts[df_shifts['Type'] == 'Conj'], x='Session', y='Shift Y', hue='Direction', fill=False)
+    plt.axhline(0, color='k', linestyle='--')
+    plt.title('Conjunctive Cells - Shift Y')
+
+    plt.tight_layout()
+    plt.show()
 
     print(f"d_asym = {parameters_complete['d_asym']:.2f}")
     print(f"l_torus = {parameters_complete['l_torus']:.2f}")

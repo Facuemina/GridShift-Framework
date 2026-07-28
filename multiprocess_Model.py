@@ -13,17 +13,18 @@ from tqdm import tqdm
 import pickle
 import numpy as np
 
-
+#%%
 def run_job(path2save, l_asym, l_torus, inclination_angle, 
             L = 50, dt = 0.01, steps = int(5 * 1e4),
             N_vis_sqrt = 40, N_conj_sqrt = 12, N_omni_sqrt = 10,
             k = 0.01, m = 0.5, gain = 1, v = 20, 
             A_vis = 30, A_hd = 1, A_vest = 15, seed = 0,
             tau = 0.01, tauv = 0.1, input_std = 3,
-            angle_std = 1.2, hd_modules = 8, nfr = 30, 
+            angle_std = 1.2, inc_angle_std = 1.2, hd_modules = 8, nfr = 30, 
             thresh=0, ACTIVATION_EXP=2, firingrate = False,
             superficial = 'False',
-            inclination_dir = np.pi/2):
+            inclination_dir = np.pi/2,
+            load_traj='False'):
     # Call the original script with extra args
     env = os.environ.copy()
     cmd = [
@@ -45,6 +46,7 @@ def run_job(path2save, l_asym, l_torus, inclination_angle,
         f"--hd_modules={hd_modules}", 
         f"--input_std={input_std}",
         f"--angle_std={angle_std}",
+        f"--inc_angle_std={inc_angle_std}",
         f"--k={k}",
         f"--m={m}",
         f"--gain={gain}", 
@@ -56,7 +58,8 @@ def run_job(path2save, l_asym, l_torus, inclination_angle,
         f"--nfr={nfr}",
         f"--ACTIVATION_EXP={ACTIVATION_EXP}",
         f"--superficial={superficial}",
-        f"--inclination_dir={inclination_dir}"
+        f"--inclination_dir={inclination_dir}",
+        f"--load_traj={load_traj}"
     ]
     
     # Dynamically append thresh so argparse (nargs=2) reads it correctly
@@ -73,21 +76,19 @@ def run_job(path2save, l_asym, l_torus, inclination_angle,
         print("\n--- RATEMODEL.PY CRASHED ---")
         print(e.stderr) # This prints the actual traceback from the child script
         raise
-
+#%%
 if __name__ == "__main__":
     set_start_method("spawn")
 
     # parameter grid
-    num = 3
+    num = 1
     firingrate = 'False'
     periodicities = [25]#,30,35,40]
-    asymmetries = [5.5]#[4]
+    asymmetries = [5]#[5.5]#[4]
     inclination_angs = [0,jnp.pi/6,jnp.pi/3,0]
     L = 50
-    
-    superficial = 'False'
-    
-    for superficial in ['True', 'False']:
+        
+    for superficial in ['True', 'False'][1:2]:
         path2save0 = os.path.split(os.getcwd())[0]    
         if firingrate == 'True':
             folder ='FiringRate'
@@ -118,19 +119,28 @@ if __name__ == "__main__":
                     
                     if superficial == 'True':
                         A_vest = 15
-                        THRESH = [120, 400 + (127*A_vest)*jnp.sin(incl_ang)]
-                        input_std = 6
-                        angle_std = 2#1.6#1.2
+                        THRESH = [120, 
+                                  500 + (250*A_vest)*jnp.sin(incl_ang)]
+                        # THRESH = [120, 
+                        #           350 + (400*A_vest)*jnp.sin(incl_ang)]
+                        # THRESH = [120, 
+                        #           550 + (100*A_vest)*jnp.sin(incl_ang)]
+                        input_std = 6.5
+                        angle_std = 1.6#1.2
                         gain = 1.2
                         inclination_dir = -np.pi/2
                         
                     elif superficial == 'False':
-                        THRESH = [100 + 600*jnp.sin(incl_ang),
-                                  350 + 20 * jnp.sin(incl_ang)]
-                        input_std = 6
-                        angle_std = 2.5
-                        gain = 1.2
-                        A_vest = 15
+                        # THRESH = [100 + 580*jnp.sin(incl_ang),
+                        #           470 - 90 * jnp.sin(incl_ang)]
+                        
+                        A_vest = 1
+                        THRESH = [(65.5 - jnp.sin(incl_ang)*40)*1.8, 
+                                  200]
+                        input_std = 5
+                        angle_std = 1.6
+                        inc_angle_std = 2#1.6
+                        gain = 2
                         inclination_dir = -np.pi/2
                         
                     else:
@@ -148,7 +158,8 @@ if __name__ == "__main__":
                             hd_modules=8,
                             firingrate=firingrate, ACTIVATION_EXP=2,
                             m=0.3,
-                            angle_std=angle_std,
+                            angle_std=angle_std,inc_angle_std=inc_angle_std,
                             superficial = superficial,
                             A_vest = A_vest,
-                            inclination_dir = inclination_dir)
+                            inclination_dir = inclination_dir,
+                            load_traj = 'False')

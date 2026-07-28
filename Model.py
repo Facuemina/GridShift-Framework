@@ -35,6 +35,7 @@ parser.add_argument("--N_omni_sqrt", type=int, default=10)
 parser.add_argument("--hd_modules", type=int, default=8)
 parser.add_argument("--input_std", type=float, default=4)
 parser.add_argument("--angle_std", type=float, default=1.2)
+parser.add_argument("--inc_angle_std", type=float, default=1.2)
 parser.add_argument("--k", type=float, default=.01)
 parser.add_argument("--m", type=float, default=.5)
 parser.add_argument("--gain", type=float, default=1.)
@@ -48,12 +49,14 @@ parser.add_argument("--thresh", type=float, nargs = 2, default= [0,150] )
 parser.add_argument("--ACTIVATION_EXP", type=float, default = 2)
 parser.add_argument("--superficial", type=str, default = 'True')
 parser.add_argument("--inclination_dir", type=float, default = 'inclination_dir')
+parser.add_argument("--load_traj", type=str, default="False")
 
 args = parser.parse_args()
 
 path2save = args.path2save
 firingrate = args.firingrate
 superficial = args.superficial
+load_traj = args.load_traj
 
 inclination_angle = args.inclination_angle
 L = args.L #arena size
@@ -77,9 +80,10 @@ N_omni = N_omni_sqrt_x * N_omni_sqrt_y
 
 input_std = args.input_std
 angle_std = args.angle_std
+inc_angle_std = args.inc_angle_std
 A_vis = args.A_vis * jnp.sqrt(2*jnp.pi*args.input_std**2)
 A_hd = args.A_hd * jnp.sqrt(2*jnp.pi*args.angle_std**2)
-A_vest = args.A_vest * jnp.sqrt(2*jnp.pi*angle_std**2) * jnp.sin(inclination_angle)
+A_vest = args.A_vest #* jnp.sqrt(2*jnp.pi*angle_std**2) * jnp.sin(inclination_angle)
 seed = args.seed
 nfr = args.nfr
 thresh = args.thresh
@@ -98,8 +102,28 @@ ACTIVATION_EXP = args.ACTIVATION_EXP
 #%% Position and phase variables
 
 # simulated rat trajectory and HD
-traj = jnp.vstack(generate2D_pos(seed, steps, L, L, v, 0.8, dt)).T
-
+if load_traj == 'False':
+    traj = jnp.vstack(generate2D_pos(seed, steps, L, L, v, 0.8, dt)).T
+else:
+    import scipy.io as sio
+    from scipy.interpolate import interp1d, CubicSpline
+    path = r'C:\Users\Facundo\Desktop\Facu\Doctorado\PythonCodes\2D-CANN\Miao\Miao-files'
+    path = os.path.join(path,'trajectory_60.mat')
+    traj = sio.loadmat(path)
+    
+    t_orig = np.arange(len(traj['trajectory']['position_x'][0][0])) * traj['trajectory']['dt'][0][0][0][0]
+    
+    traj = np.hstack((traj['trajectory']['position_x'][0][0],
+                      traj['trajectory']['position_y'][0][0],
+                      traj['trajectory']['headDirection'][0][0]))
+    # Create new time vector up to the last original time point
+    t_new = np.arange(0, t_orig[-1], dt) 
+    
+    # --- Cubic Spline ---
+    cs = CubicSpline(t_orig, traj, axis=0)
+    traj = cs(t_new)
+    steps = len(traj)
+    
 #Preffered head direction for each conjunctive cell
 pref_hd = jnp.repeat(jnp.linspace(0,2*jnp.pi,hd_modules+1)[:-1],  N_conj_sqrt_x*N_conj_sqrt_y).reshape(-1,1)
 
@@ -177,13 +201,15 @@ V_omni = m * U_omni
 # nfr = 30
 # ACTIVATION_EXP = 2
 neural_params =( 1/tau, 1/tauv, m, k, ACTIVATION_EXP, gain)
-input_params = (dt, input_std, angle_std, A_vis, A_hd, A_vest, L)
+input_params = (dt, input_std, (angle_std, inc_angle_std), inclination_angle, A_vis, A_hd, A_vest, L)
 
 if firingrate == 'True':
     # 1. Run simulation
     U_conj, U_omni, V_conj, V_omni, fU_conj, rate_map_conj, rate_map_omni = run_rate_simulation((U_conj, U_omni), (V_conj, V_omni), 
                                                                                                  (Wvis_conj, Wrec_conj, Wconj_omni), 
-                                                                                                 traj, neural_params,                                                                                        input_params, pos, pref_hd, steps,
+                                                                                                 traj, neural_params, 
+                                                                                                 input_params, pos, 
+                                                                                                 pref_hd, steps,
                                                                                                  nfr, nfr, thresh)
     
     # 2. Compute occupancy
@@ -260,6 +286,7 @@ parameters = {
     "N_omni_sqrt":N_omni_sqrt,
     "hd_modules":hd_modules, 
     "input_std":input_std,
+    "inc_angle_std": inc_angle_std,
     "angle_std":angle_std,
     "k":k,
     "m":m,
