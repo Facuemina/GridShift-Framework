@@ -81,7 +81,7 @@ if __name__ == "__main__":
     for num in [1,2,3,4,5]:
         load_traj = 'False'
         periodicities = [30]
-        asymmetries = [8]
+        asymmetries = [7.5]
         inclination_angs = [0, jnp.pi/3, jnp.pi/6, 0]
         # inclination_angs = [0, jnp.pi/3]
         L = 50
@@ -126,8 +126,8 @@ if __name__ == "__main__":
                     pars['seed'] = i_incl + 10 * num
                     pars['l_torus'] = l_torus
                     pars['thresh'] = [0, 0, 450]#300 * (np.cos(incl_ang) + 1)]
-                    pars['A_vest'] = 10
-                    pars['thresh_weights'] = [conj_std, conj_std, 0.3, 0]
+                    pars['A_vest'] = 4
+                    pars['thresh_weights'] = [conj_std, conj_std, 0.7, 0]
                     pars['hd_modules'] = 8
                     pars['N_conj_sqrt1'] = 15
                     pars['N_conj_sqrt2'] = 9

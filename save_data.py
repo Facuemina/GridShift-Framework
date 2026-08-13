@@ -102,7 +102,9 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 2. BATCH PROCESSING LOOP
     # =========================================================================
-    for num in range(1, 6):
+    NUMS = range(1, 6)
+    NUMS_LABEL = "".join('_'+str(i) for i in NUMS)
+    for num in NUMS:
         print(f"\nProcessing Rat (num) = {num}...")
         path2load = os.path.join(base_path, f'Simulation-2layer-num{num}')
         
@@ -115,7 +117,8 @@ if __name__ == "__main__":
             
         L = parameters_complete['L']
         dt = parameters_complete['dt']
-
+        hd_modules = parameters_complete['hd_modules']
+        
         print("  Loading data and computing rate maps...")
         omni_maps, conj_maps1, conj_maps2, traj_list = load_and_compute_maps_from_sparse(
             num=num, sim_folder=path2load, nx=nfr_init, ny=nfr_init
@@ -182,11 +185,18 @@ if __name__ == "__main__":
                     
                     grid_score, spacing = compute_grid_metrics(autocorrelograms[neuron_idx])
                     
+                    if cell_name == 'Omni':
+                            pref_angle = np.nan
+                    else:
+                        cells_per_module = N_cells // hd_modules
+                        pref_angle = (neuron_idx // cells_per_module) * (2 * np.pi / hd_modules)
+                            
                     all_data.append({
                         'Rat': num,
                         'Session_Angle': ses_label,
                         'Cell_Type': cell_name,
                         'Neuron_ID': neuron_idx,
+                        'Pref_angle': pref_angle,
                         'Mean_FR': mean_fr_tot[neuron_idx],
                         'Shift_X_Total': shifts_tot[neuron_idx, 0],
                         'Shift_Y_Total': shifts_tot[neuron_idx, 1],
@@ -203,7 +213,7 @@ if __name__ == "__main__":
     # =========================================================================
     print("\nBatch processing complete. Exporting to CSV...")
     df_results = pd.DataFrame(all_data)
-    output_path = os.path.join(base_path, 'all_rats_metrics.csv')
+    output_path = os.path.join(base_path, f'all_rats_metrics_nums{NUMS_LABEL}.csv')
     df_results.to_csv(output_path, index=False)
     
     print(f"File successfully saved to: {output_path}")
