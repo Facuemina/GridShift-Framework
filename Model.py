@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Model.py
+model.py
 """
 
 import os
