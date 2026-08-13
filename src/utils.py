@@ -1,53 +1,36 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jul 14 12:21:39 2026
+utils.py
 
-@author: Facundo
+Helper functions:
+    - 2D trajectory generator
+    - Netwrok connectivity builders
+    - Firing rate map computations
+    - Spatial shift computations
 """
 
-import jax.numpy as jnp
-from jax import vmap, jit, random, lax
-from numbers import Number
+import os
+import pickle
 import numpy as np
 import numpy.linalg as la
+import jax.numpy as jnp
+from jax import jit, random, lax
+from numbers import Number
 from scipy.ndimage import gaussian_filter
+from scipy.signal import correlate2d
+from tqdm import tqdm
 
-def compute_occupancy_map_raw(traj, L, nx, ny):
-    """
-    Computes a 1D flattened occupancy map (time steps per spatial bin) 
-    from a spatial trajectory.
-    """
-    x_pos = traj[:, 0]
-    y_pos = traj[:, 1]
-    
-    x_idx = jnp.clip(jnp.floor((x_pos / L) * nx).astype(jnp.int32), 0, nx - 1)
-    y_idx = jnp.clip(jnp.floor((y_pos / L) * ny).astype(jnp.int32), 0, ny - 1)
-    idx = y_idx * nx + x_idx
-    
-    occupancy = jnp.bincount(idx, length=nx * ny)
-    
-    return occupancy
-
-# Apply jit explicitly here, passing the function as the first argument
-compute_occupancy_map = jit(compute_occupancy_map_raw, static_argnums=(2, 3))
-
-def generate2D_pos(seed, steps, Lx, Ly, v, sigma_theta, delta_t, periodic = False):
-    """
-    Reproduces the MATLAB behavior:
-      - Random walk in 2D with angular noise
-      - When crossing a boundary, retries with smaller angular noise (σθ/3)
-        until the step lands inside.
-    """
+def generate2D_pos(seed, steps, Lx, Ly, v, sigma_theta, delta_t, periodic=False):
     two_pi = 2 * jnp.pi
     
     key = random.PRNGKey(seed)
-    # initial random position and heading
     key, k1, k2, k3 = random.split(key, 4)
     mydir = random.uniform(k1, minval=0.0, maxval=two_pi)
     x = random.uniform(k2, minval=0.0, maxval=Lx)
     y = random.uniform(k3, minval=0.0, maxval=Ly)
-    if isinstance(v,Number):
+    if isinstance(v, Number):
         v = jnp.ones(steps) * v
+        
     if periodic:
         @jit
         def out_of_bounds(xp, yp):
@@ -63,7 +46,6 @@ def generate2D_pos(seed, steps, Lx, Ly, v, sigma_theta, delta_t, periodic = Fals
         
         key, k_ang = random.split(key)
 
-        # --- Main step (same as MATLAB first proposal)
         mydir = jnp.mod(
             mydir + random.normal(k_ang) * sigma_theta * jnp.sqrt(delta_t),
             two_pi,
@@ -71,17 +53,14 @@ def generate2D_pos(seed, steps, Lx, Ly, v, sigma_theta, delta_t, periodic = Fals
         x_new = x + v_i * jnp.cos(mydir) * delta_t
         y_new = y + v_i * jnp.sin(mydir) * delta_t
 
-        # --- Retry loop when out of bounds
         def cond_fn(state):
             x_t, y_t, dir_t, key_t, count = state
-            return out_of_bounds(x_t, y_t) #& (count < 50)
+            return out_of_bounds(x_t, y_t)
 
         def body_fn(state):
             x_t, y_t, dir_t, key_t, count = state
-            # undo last move
             x_t = x_t - v_i * jnp.cos(dir_t) * delta_t
             y_t = y_t - v_i * jnp.sin(dir_t) * delta_t
-            # new smaller angular noise
             key_t, ksub = random.split(key_t)
             dir_t = jnp.mod(
                 dir_t
@@ -91,7 +70,6 @@ def generate2D_pos(seed, steps, Lx, Ly, v, sigma_theta, delta_t, periodic = Fals
                 / 3.0,
                 two_pi,
             )
-            # move again
             x_t = x_t + v_i * jnp.cos(dir_t) * delta_t
             y_t = y_t + v_i * jnp.sin(dir_t) * delta_t
             return (x_t, y_t, dir_t, key_t, count + 1)
@@ -103,14 +81,11 @@ def generate2D_pos(seed, steps, Lx, Ly, v, sigma_theta, delta_t, periodic = Fals
 
     init_carry = (x, y, mydir, key)
     _, traj = lax.scan(step, init_carry, v, length=steps)
-    #traj = jnp.stack(traj, axis=1)  # shape (steps, 3)
     return traj
 
 def map2torus_fn(x, y, l, phase=jnp.array([0., 0.]), orientation=0.):
     angle = jnp.pi / 3
 
-    # 1. Shift and anti-rotate to the lattice frame
-    # JAX handles multi-dimensional broadcasting automatically; no reshaping needed.
     x = x - phase[0]
     y = y - phase[1]
     
@@ -118,38 +93,20 @@ def map2torus_fn(x, y, l, phase=jnp.array([0., 0.]), orientation=0.):
     xr_ = c * x - s * y
     yr_ = s * x + c * y
     
-    # 2. Convert x to the oblique basis (projection along the x-axis)
     u_l = xr_ - yr_ / jnp.tan(angle)
 
-    # 3. Fold the coordinates
-    # Wrap y strictly inside the parallelogram height
     yr_folded = yr_ % (l * jnp.sin(angle))
-    
-    # Wrap the oblique x-coordinate, then transform back to Cartesian
     xr_folded = (u_l % l) + yr_folded / jnp.tan(angle)
-
-    # 4. Rotate back to global coordinates 
-    # (Uncomment if your distance function expects global rather than lattice coordinates)
-    # xr_final = (c * xr_folded + s * yr_folded) + phase[0]
-    # yr_final = (-s * xr_folded + c * yr_folded) + phase[1]
-    # return xr_final, yr_final
 
     return xr_folded, yr_folded
 
 @jit
 def distance_torus_sq(X, Y, l):
-    """
-    Compute squared Euclidean distance on a flat twisted torus.
-    Supports N-dimensional broadcasting (e.g., X of shape (N, 1, 2) and Y of shape (1, M, 2)).
-    """
     angle = jnp.pi / 3
     
-    # Extract coordinates. The '...' ensures it works for 2D, 3D, or any shaped arrays.
     X_x, X_y = X[..., 0], X[..., 1]
     Y_x, Y_y = Y[..., 0], Y[..., 1]
     
-    # Initialize distances with infinity
-    # This automatically takes the broadcasted shape of X_x - Y_x
     distances_sq = jnp.full_like(X_x - Y_x, jnp.inf)
     
     for m in [-1, 0, 1]:
@@ -162,7 +119,6 @@ def distance_torus_sq(X, Y, l):
             
     return distances_sq
 
-
 def build_torus_connectivity(
     X_pre, 
     X_post, 
@@ -174,50 +130,22 @@ def build_torus_connectivity(
     map2torus_fn=map2torus_fn,
     distance_torus_fn=distance_torus_sq
 ):
-    """
-    Creates a Gaussian connectivity matrix between pre-synaptic and post-synaptic neurons 
-    on a 2D twisted torus. Supports asymmetric connectivity based on head direction.
-
-    Args:
-        X_pre: (N_pre, 2) array of pre-synaptic neuron phases/positions.
-        X_post: (N_post, 2) array of post-synaptic neuron phases/positions.
-        sigma: Width of the Gaussian connectivity profile.
-        torus_l: Scale/size of the torus (equivalent to 'l' in the reference code).
-        l_asym: Magnitude of the asymmetric shift. Defaults to 0.0.
-        hd_pre: (N_pre,) array of preferred head directions (in radians). Optional.
-        orientation: Orientation parameter for the torus mapping.
-        map2torus_fn: Your existing function to map (x,y) coordinates to the torus.
-        distance_torus_fn: Your existing function to compute distances on the torus.
-
-    Returns:
-        W: (N_post, N_pre) connectivity weight matrix.
-    """
-    
-    # 1. Compute Target Centers (Asymmetric Shift)
     if hd_pre is None or l_asym == 0.0:
         X_target = X_pre
     else:
-        # Shift the target projection phase forward along the preferred HD
         dx = l_asym * jnp.cos(hd_pre)
         dy = l_asym * jnp.sin(hd_pre)
         
         x_shifted = X_pre[:, 0] + dx
         y_shifted = X_pre[:, 1] + dy
         
-        # Remap the shifted coordinates back to the valid torus space
         x_mapped, y_mapped = map2torus_fn(x_shifted, y_shifted, l=torus_l, orientation=orientation)
         X_target = jnp.column_stack((x_mapped, y_mapped))
 
-    # 2. Compute Pairwise Torus Distances
-    # Expand dimensions to leverage broadcasting: 
-    # X_target becomes (N_pre, 1, 2) and X_post becomes (1, N_post, 2)
     X_target_exp = X_target[None, :, :]
     X_post_exp = X_post[:, None, :]
     
-    # Calculate the (N_pre, N_post) distance matrix
     dist_sq_matrix = distance_torus_sq(X_target_exp, X_post_exp, torus_l)
-    
-    # 3. Apply Gaussian Profile
     W = jnp.exp(- (dist_sq_matrix) / (2 * sigma ** 2))
     
     return W
@@ -229,178 +157,37 @@ def build_feedforward_connectivity(
     torus_l, 
     orientation=0.0
 ):
-    """
-    Maps spatial inputs (e.g., an arena or animal trajectory) to grid cell phases,
-    generating a hexagonal firing field.
-
-    Args:
-        X_space: (N_space, 2) array of spatial coordinates in the real world.
-        X_phases: (N_grid, 2) array of preferred phases for the grid cells.
-        sigma: Width of the Gaussian firing field.
-        torus_l: Grid spacing scale.
-        orientation: Grid orientation angle.
-
-    Returns:
-        W: (N_grid, N_space) matrix representing the input to each grid cell 
-           at each spatial location.
-    """
-    
-    # 1. Fold all spatial coordinates into the fundamental torus domain
-    # This is what creates the repeating hexagonal fields
     x_mapped, y_mapped = map2torus_fn(X_space[:, 0], X_space[:, 1], l=torus_l, orientation=orientation)
     X_space_folded = jnp.column_stack((x_mapped, y_mapped))
     
-    # 2. Expand dimensions for pairwise broadcasting
-    X_target_exp = X_space_folded[None, :, :]  # Shape: (N_space, 1, 2)
-    X_phases_exp = X_phases[:, None, :]        # Shape: (1, N_grid, 2)
+    X_target_exp = X_space_folded[None, :, :] 
+    X_phases_exp = X_phases[:, None, :]        
     
-    # 3. Compute squared distance and apply Gaussian
     dist_matrix_sq = distance_torus_sq(X_target_exp, X_phases_exp, torus_l)
-    
     W = jnp.exp(- dist_matrix_sq / (2 * sigma ** 2))
     
     return W
 
-def generate_uniform_toroidal_phase_distribution(nx,ny,l):
+def generate_uniform_toroidal_phase_distribution(nx, ny, l):
     x = jnp.zeros(nx*ny)
     y = jnp.zeros(nx*ny)
-    seq = jnp.linspace(0,l,nx,False)
+    seq = jnp.linspace(0, l, nx, False)
     for iy in range(ny):
         x = x.at[iy*nx:(iy+1)*nx].set(seq + iy/ny*l*jnp.cos(jnp.pi/3))
         y = y.at[iy*nx:(iy+1)*nx].set(iy/ny*l*jnp.sin(jnp.pi/3))
     return x, y
 
-# def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
-#     """
-#     Finds the sub-pixel shift by fitting a 2D quadratic to the
-#     N x N neighborhood around the integer peak.
-
-#     Args:
-#         corr_map (np.ndarray): The 2D cross-correlogram.
-#         n (int, optional): The size of the neighborhood to fit.
-#                            Must be an odd integer (e.g., 3, 5, 7).
-#                            Defaults to 3 (a 3x3 grid).
-#         search_radius_pixels (int, optional): If provided, only searches
-#             for the peak within this pixel radius of the map's center.
-#             This is used to ignore periodic side-peaks.
-
-#     Returns:
-#         tuple (float, float): The sub-pixel spatial shift in (shift_y, shift_x).
-#     """
-#     if n < 3 or n % 2 == 0:
-#         raise ValueError(f"n must be an odd integer >= 3, but got {n}")
-
-#     h = (n - 1) // 2
-
-#     # 1. Find integer peak (coarse search)
-#     shape = corr_map.shape
-#     center_y, center_x = shape[0] // 2, shape[1] // 2
-
-#     # ---RESTRICT SEARCH AREA ---
-#     if search_radius_pixels is not None:
-#         # Create a map to search, copying the original
-#         search_map = corr_map.copy()
-        
-#         # Create coordinate grids
-#         y, x = np.indices(shape)
-        
-#         # Calculate distance from center for every pixel
-#         dist_from_center = np.sqrt((y - center_y)**2 + (x - center_x)**2)
-        
-#         # Mask out all pixels *outside* the search radius
-#         # by setting them to a very low value
-#         search_map[dist_from_center > search_radius_pixels] = -np.inf
-        
-#         # Find the peak on this new *masked* map
-#         peak_y, peak_x = np.unravel_index(np.argmax(search_map), shape)
-        
-#         if np.isinf(search_map[peak_y, peak_x]):
-#             print("Warning: No peak found within search_radius. "
-#                   "Returning (0,0) shift.")
-#             return (0.0, 0.0)
-            
-#     else:
-#         # Original behavior: find the global maximum
-#         peak_y, peak_x = np.unravel_index(np.argmax(corr_map), shape)
-#     # -----------------------
-    
-#     # 2. Handle edge cases (UPDATED with h)
-#     if (peak_y < h or peak_y >= shape[0] - h or
-#         peak_x < h or peak_x >= shape[1] - h):
-#         print(f"Warning: Peak is too close to border for {n}x{n} fit. "
-#               "Returning integer-pixel shift.")
-#         return (float(peak_y - center_y), float(peak_x - center_x))
-
-#     # 3. Extract n x n neighborhood
-#     z = corr_map[peak_y-h : peak_y+h+1, peak_x-h : peak_x+h+1]
-    
-#     # 4. Create design matrix 'A'
-#     y, x = np.array(list(np.ndindex(n, n))).T - h
-#     A = np.vstack([x**2, y**2, x*y, x, y, np.ones(n*n)]).T
-    
-#     # 5. Solve for parameters
-#     z_flat = z.flatten()
-#     try:
-#         p = la.lstsq(A, z_flat, rcond=None)[0]
-#     except la.LinAlgError:
-#         print("Warning: Linear algebra error. Returning integer shift.")
-#         return (float(peak_y - center_y), float(peak_x - center_x))
-
-#     a, b, c, d, e, f = p
-
-#     # 6. Find vertex
-#     M = np.array([[2*a, c], [c, 2*b]])
-#     v = np.array([-d, -e])
-    
-#     try:
-#         offsets = la.solve(M, v)
-#         x_offset, y_offset = offsets
-#     except la.LinAlgError:
-#         print("Warning: Singular matrix in vertex calculation. Returning integer shift.")
-#         return (float(peak_y - center_y), float(peak_x - center_x))
-
-#     # 7. Check if reasonable
-#     if abs(x_offset) > h or abs(y_offset) > h:
-#         print(f"Warning: Sub-pixel offset > {h}. Fit unstable. Returning integer shift.")
-#         return (float(peak_y - center_y), float(peak_x - center_x))
-            
-#     # 8. Calculate final sub-pixel shift
-#     subpixel_y = peak_y + y_offset
-#     subpixel_x = peak_x + x_offset
-#     final_shift_y = center_y - subpixel_y
-#     final_shift_x = center_x - subpixel_x
-
-#     return (final_shift_y, final_shift_x)
-
-def compute_rate_maps_from_sparse(sparse_spikes, traj, selected_neurons, L, dt, nx=30, ny=30):
-    """
-    Computes spatial firing rate maps for a subset of neurons efficiently.
-    
-    Args:
-        sparse_spikes (dict): Dictionary containing 'time_idx', 'neuron_idx', and 'counts'.
-        traj (np.ndarray): Trajectory array of shape (steps, 3) where columns are [x, y, hd].
-        selected_neurons (array-like): Array or list of neuron indices to process.
-        L (float): Arena size.
-        dt (float): Integration time step.
-        nx (int, optional): Number of spatial bins in x. Defaults to 30.
-        ny (int, optional): Number of spatial bins in y. Defaults to 30.
-        
-    Returns:
-        np.ndarray: Rate maps of shape (len(selected_neurons), ny, nx).
-    """
+def compute_rate_maps_from_sparse_utils(sparse_spikes, traj, selected_neurons, L, dt, nx=30, ny=30):
     x_pos = traj[:, 0]
     y_pos = traj[:, 1]
     
-    # 1. Map continuous trajectory to 1D spatial bin indices
     x_idx = np.clip(np.floor((x_pos / L) * nx).astype(int), 0, nx - 1)
     y_idx = np.clip(np.floor((y_pos / L) * ny).astype(int), 0, ny - 1)
-    # spatial_idx = x_idx * ny + y_idx  # Shape: (steps,)
-    spatial_idx = y_idx * nx + x_idx # Shape: (steps,)
-    # 2. Compute Occupancy Map (time spent in each bin in seconds)
+    spatial_idx = y_idx * nx + x_idx 
+
     occupancy_1d = np.bincount(spatial_idx, minlength=nx * ny) * dt
     safe_occupancy = np.where(occupancy_1d > 0, occupancy_1d, 1.0)
     
-    # 3. Filter sparse spikes to only include the selected neurons
     selected_neurons = np.asarray(selected_neurons)
     mask = np.isin(sparse_spikes['neuron_idx'], selected_neurons)
     
@@ -408,108 +195,55 @@ def compute_rate_maps_from_sparse(sparse_spikes, traj, selected_neurons, L, dt, 
     filt_neuron_idx = sparse_spikes['neuron_idx'][mask]
     filt_counts = sparse_spikes['counts'][mask]
     
-    # Get the 1D spatial bin index for every single spike
     spike_spatial_idx = spatial_idx[filt_time_idx]
     
-    # 4. Generate rate maps
     num_selected = len(selected_neurons)
     rate_maps = np.zeros((num_selected, ny, nx))
     
-    # Loop through the subset of selected neurons (fast because it scales with subset size, not time)
     for i, neuron_id in enumerate(selected_neurons):
         n_mask = (filt_neuron_idx == neuron_id)
         n_spatial_idx = spike_spatial_idx[n_mask]
         n_counts = filt_counts[n_mask]
         
-        # Sum spikes in each spatial bin using counts as weights
         spike_map_1d = np.bincount(n_spatial_idx, weights=n_counts, minlength=nx * ny)
-        
-        # Divide by occupancy and reshape to 2D
         rate_map_2d = (spike_map_1d / safe_occupancy).reshape(ny, nx)
-        
-        # Optional: Set unvisited bins to 0 (or np.nan if preferred for plotting)
         rate_map_2d[occupancy_1d.reshape(ny, nx) == 0] = 0 
         
         rate_maps[i] = rate_map_2d
         
     return rate_maps
 
-
 def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
-    """
-    Finds the sub-pixel shift by fitting a 2D quadratic to the
-    N x N neighborhood around the integer peak.
-
-    Args:
-        corr_map (np.ndarray): The 2D cross-correlogram, e.g.
-            correlate2d(rm1, rm2, mode='full', boundary='fill', fillvalue=0).
-        n (int, optional): The size of the neighborhood to fit.
-                           Must be an odd integer (e.g., 3, 5, 7).
-                           Defaults to 3 (a 3x3 grid).
-        search_radius_pixels (int, optional): If provided, only searches
-            for the peak within this pixel radius of the map's center.
-            This is used to ignore periodic side-peaks.
-
-    Returns:
-        tuple (float, float): The sub-pixel spatial shift (shift_y, shift_x),
-            defined as (center of corr_map) - (location of the peak) —
-            i.e. the shift you'd apply to rm1 so its feature lands on
-            rm2's feature, given corr_map = correlate2d(rm1, rm2).
-            This convention is now consistent across every return path.
-    """
     if n < 3 or n % 2 == 0:
         raise ValueError(f"n must be an odd integer >= 3, but got {n}")
     h = (n - 1) // 2
 
-    # 1. Find integer peak (coarse search)
     shape = corr_map.shape
     center_y, center_x = shape[0] // 2, shape[1] // 2
 
-    # --- RESTRICT SEARCH AREA ---
     if search_radius_pixels is not None:
-        # Create a map to search, copying the original
         search_map = corr_map.copy()
-
-        # Create coordinate grids
         y, x = np.indices(shape)
-
-        # Calculate distance from center for every pixel
         dist_from_center = np.sqrt((y - center_y) ** 2 + (x - center_x) ** 2)
-
-        # Mask out all pixels *outside* the search radius
-        # by setting them to a very low value
         search_map[dist_from_center > search_radius_pixels] = -np.inf
-
-        # Find the peak on this new *masked* map
         peak_y, peak_x = np.unravel_index(np.argmax(search_map), shape)
 
         if np.isinf(search_map[peak_y, peak_x]):
-            print("Warning: No peak found within search_radius. "
-                  "Returning (0,0) shift.")
+            print("Warning: No peak found within search_radius. Returning (0,0) shift.")
             return (0.0, 0.0)
-
     else:
-        # Original behavior: find the global maximum
         peak_y, peak_x = np.unravel_index(np.argmax(corr_map), shape)
-    # -----------------------
 
-    # 2. Handle edge cases (peak too close to border for an n x n fit)
     if (peak_y < h or peak_y >= shape[0] - h or
             peak_x < h or peak_x >= shape[1] - h):
-        print(f"Warning: Peak is too close to border for {n}x{n} fit. "
-              "Returning integer-pixel shift.")
-        # FIX: use (center - peak) to match the sign convention of the
-        # main sub-pixel return path below.
+        print(f"Warning: Peak is too close to border for {n}x{n} fit. Returning integer-pixel shift.")
         return (float(center_y - peak_y), float(center_x - peak_x))
 
-    # 3. Extract n x n neighborhood
     z = corr_map[peak_y - h: peak_y + h + 1, peak_x - h: peak_x + h + 1]
 
-    # 4. Create design matrix 'A'
     y, x = np.array(list(np.ndindex(n, n))).T - h
     A = np.vstack([x**2, y**2, x * y, x, y, np.ones(n * n)]).T
 
-    # 5. Solve for parameters
     z_flat = z.flatten()
     try:
         p = la.lstsq(A, z_flat, rcond=None)[0]
@@ -518,7 +252,6 @@ def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
         return (float(center_y - peak_y), float(center_x - peak_x))
     a, b, c, d, e, f = p
 
-    # 6. Find vertex
     M = np.array([[2 * a, c], [c, 2 * b]])
     v = np.array([-d, -e])
 
@@ -529,16 +262,188 @@ def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
         print("Warning: Singular matrix in vertex calculation. Returning integer shift.")
         return (float(center_y - peak_y), float(center_x - peak_x))
 
-    # 7. Check if reasonable
     if abs(x_offset) > h or abs(y_offset) > h:
         print(f"Warning: Sub-pixel offset > {h}. Fit unstable. Returning integer shift.")
         return (float(center_y - peak_y), float(center_x - peak_x))
 
-    # 8. Calculate final sub-pixel shift
     subpixel_y = peak_y + y_offset
     subpixel_x = peak_x + x_offset
     final_shift_y = center_y - subpixel_y
     final_shift_x = center_x - subpixel_x
     return (final_shift_y, final_shift_x)
+
+def compute_rate_maps_from_sparse(sparse_spikes, traj, selected_neurons, L, dt, nx=30, ny=30, speed_thresh=2.5, sigma_val=3.0, min_events=10):
+    x_pos = traj[:, 0]
+    y_pos = traj[:, 1]
     
+    vx = np.gradient(x_pos, dt)
+    vy = np.gradient(y_pos, dt)
+    speed = np.sqrt(vx**2 + vy**2)
     
+    valid_speed_mask = speed > speed_thresh
+    
+    x_idx = np.clip(np.floor((x_pos / L) * nx).astype(int), 0, nx - 1)
+    y_idx = np.clip(np.floor((y_pos / L) * ny).astype(int), 0, ny - 1)
+    spatial_idx = y_idx * nx + x_idx
+    
+    occupancy_1d = np.bincount(spatial_idx[valid_speed_mask], minlength=nx * ny) * dt
+    safe_occupancy = np.where(occupancy_1d > 0, occupancy_1d, 1.0)
+    occupancy_2d = occupancy_1d.reshape(ny, nx)
+    
+    selected_neurons = np.asarray(selected_neurons)
+    mask = np.isin(sparse_spikes['neuron_idx'], selected_neurons)
+    
+    filt_time_idx = sparse_spikes['time_idx'][mask]
+    filt_neuron_idx = sparse_spikes['neuron_idx'][mask]
+    filt_counts = sparse_spikes['counts'][mask]
+    
+    spike_speed_mask = valid_speed_mask[filt_time_idx]
+    filt_time_idx = filt_time_idx[spike_speed_mask]
+    filt_neuron_idx = filt_neuron_idx[spike_speed_mask]
+    filt_counts = filt_counts[spike_speed_mask]
+    
+    spike_spatial_idx = spatial_idx[filt_time_idx]
+    
+    num_selected = len(selected_neurons)
+    rate_maps = np.zeros((num_selected, ny, nx))
+    
+    bin_size = L / nx
+    sigma_bins = sigma_val / bin_size
+    
+    for i, neuron_id in enumerate(selected_neurons):
+        n_mask = (filt_neuron_idx == neuron_id)
+        n_counts = filt_counts[n_mask]
+        
+        if np.sum(n_counts) <= min_events:
+            rate_maps[i] = np.zeros((ny, nx))
+            continue
+            
+        n_spatial_idx = spike_spatial_idx[n_mask]
+        
+        spike_map_1d = np.bincount(n_spatial_idx, weights=n_counts, minlength=nx * ny)
+        
+        raw_rate_map_2d = (spike_map_1d / safe_occupancy).reshape(ny, nx)
+        raw_rate_map_2d[occupancy_2d == 0] = 0
+        
+        smoothed_rate_map = gaussian_filter(raw_rate_map_2d, sigma=sigma_bins, mode='constant', cval=0)
+        rate_maps[i] = smoothed_rate_map
+        
+    return rate_maps
+
+def load_and_compute_maps_from_sparse(num, sim_folder, nx=30, ny=30, sigma=3):
+    if not os.path.exists(sim_folder):
+        raise FileNotFoundError(f"Simulation directory not found: {sim_folder}")
+        
+    loaded_maps = {}
+    loaded_maps_conj1 = {}
+    loaded_maps_conj2 = {}
+    traj_list = []
+    
+    folder_list = [l for l in os.listdir(sim_folder) if os.path.isdir(os.path.join(sim_folder, l))]
+    
+    for fldr_idx, folder_name in enumerate(folder_list):
+        folder_path = os.path.join(sim_folder, folder_name)
+        
+        param_path = os.path.join(folder_path, 'parameters_complete.pkl')
+        traj_path = os.path.join(folder_path, 'traj.npy')
+        omni_spikes_path = os.path.join(folder_path, 'sparse_spikes_omni.pkl')
+        conj_spikes_path1 = os.path.join(folder_path, 'sparse_spikes_conj1.pkl')
+        conj_spikes_path2 = os.path.join(folder_path, 'sparse_spikes_conj2.pkl')
+        
+        if not os.path.exists(param_path) or not os.path.exists(traj_path):
+            print(f"Skipping {folder_name}: Missing files.")
+            continue
+            
+        with open(param_path, 'rb') as file:
+            params = pickle.load(file)
+            
+        traj = np.load(traj_path)
+        traj_list.append(traj)
+        
+        L = params['L']
+        dt = params['dt']
+        
+        with open(omni_spikes_path, 'rb') as file:
+            omni_spikes = pickle.load(file)
+        with open(conj_spikes_path1, 'rb') as file:
+            conj_spikes1 = pickle.load(file)
+        with open(conj_spikes_path2, 'rb') as file:
+            conj_spikes2 = pickle.load(file)
+
+        N_omni = np.max(omni_spikes['neuron_idx']) + 1 if len(omni_spikes['neuron_idx']) > 0 else 0
+        N_conj1 = np.max(conj_spikes1['neuron_idx']) + 1 if len(conj_spikes1['neuron_idx']) > 0 else 0
+        N_conj2 = np.max(conj_spikes2['neuron_idx']) + 1 if len(conj_spikes2['neuron_idx']) > 0 else 0
+
+        print(f"Computing maps for {folder_name}...")
+        rate_map_omni = compute_rate_maps_from_sparse(
+            omni_spikes, traj, np.arange(N_omni), L, dt, nx=nx, ny=ny, sigma_val=sigma)
+        rate_map_conj1 = compute_rate_maps_from_sparse(
+            conj_spikes1, traj, np.arange(N_conj1), L, dt, nx=nx, ny=ny, sigma_val=sigma)
+        rate_map_conj2 = compute_rate_maps_from_sparse(
+            conj_spikes2, traj, np.arange(N_conj2), L, dt, nx=nx, ny=ny, sigma_val=sigma)
+        
+        loaded_maps[fldr_idx] = {'spiking maps': {}}
+        loaded_maps_conj1[fldr_idx] = {'spiking maps': {}}
+        loaded_maps_conj2[fldr_idx] = {'spiking maps': {}}
+        
+        loaded_maps[fldr_idx]['rate maps'] = rate_map_omni
+        loaded_maps[fldr_idx]['spiking maps']['neuron_idx'] = omni_spikes['neuron_idx']
+        loaded_maps[fldr_idx]['spiking maps']['time_idx'] = omni_spikes['time_idx']
+        
+        loaded_maps_conj1[fldr_idx]['rate maps'] = rate_map_conj1
+        loaded_maps_conj1[fldr_idx]['spiking maps']['neuron_idx'] = conj_spikes1['neuron_idx']
+        loaded_maps_conj1[fldr_idx]['spiking maps']['time_idx'] = conj_spikes1['time_idx']
+        
+        loaded_maps_conj2[fldr_idx]['rate maps'] = rate_map_conj2
+        loaded_maps_conj2[fldr_idx]['spiking maps']['neuron_idx'] = conj_spikes2['neuron_idx']
+        loaded_maps_conj2[fldr_idx]['spiking maps']['time_idx'] = conj_spikes2['time_idx']
+        
+        print(f"Finished {folder_name}. Shapes: Omni {rate_map_omni.shape}, Conj1 {rate_map_conj1.shape}, Conj2 {rate_map_conj2.shape}")
+            
+    return loaded_maps, loaded_maps_conj1, loaded_maps_conj2, traj_list
+
+def compute_cross_corrs(fr_maps0, fr_maps1, sd=2, smooth=False):
+    CrossCorr = np.zeros((fr_maps0.shape[0], fr_maps0.shape[1]*2-1, fr_maps0.shape[1]*2-1))
+    
+    for ind in tqdm(range(CrossCorr.shape[0]), desc="Cross Correlograms"):
+        rm1 = (fr_maps0[ind] - fr_maps0[ind].mean()) / fr_maps0[ind].std()
+        rm2 = (fr_maps1[ind] - fr_maps1[ind].mean()) / fr_maps1[ind].std()
+        
+        if smooth:
+            rm1 = gaussian_filter(rm1, (sd, sd), mode='constant', cval=0)
+            rm2 = gaussian_filter(rm2, (sd, sd), mode='constant', cval=0)
+            
+        CrossCorr[ind] = correlate2d(rm1, rm2, mode='full', boundary='fill', fillvalue=0)
+        
+    shifts = np.zeros((fr_maps0.shape[0], 2))
+    for i in tqdm(range(fr_maps0.shape[0]), desc="Spatial Shift"):
+        sy, sx = find_spatial_shift_subpixel(CrossCorr[i], n=7, search_radius_pixels=7)
+        shifts[i, 0], shifts[i, 1] = sx, sy
+    
+    return shifts, CrossCorr
+
+def compute_directional_rate_maps(spiking_maps, traj, is_cond, num_neurons, L, dt, nx=30, ny=30):
+    x_idx = np.clip(np.floor((traj[:, 0] / L) * nx).astype(int), 0, nx - 1)
+    y_idx = np.clip(np.floor((traj[:, 1] / L) * ny).astype(int), 0, ny - 1)
+    spatial_idx = y_idx * nx + x_idx
+
+    occ = np.bincount(spatial_idx[is_cond], minlength=nx * ny) * dt
+    safe_occ = np.where(occ > 0, occ, 1.0)
+
+    t_idx = spiking_maps['time_idx']
+    n_idx = spiking_maps['neuron_idx']
+
+    valid_spikes_mask = is_cond[t_idx]
+    t_idx_cond = t_idx[valid_spikes_mask]
+    n_idx_cond = n_idx[valid_spikes_mask]
+    spike_spatial_idx = spatial_idx[t_idx_cond]
+
+    maps = np.zeros((num_neurons, ny, nx))
+    for neuron_id in range(num_neurons):
+        mask = (n_idx_cond == neuron_id)
+        spike_map = np.bincount(spike_spatial_idx[mask], minlength=nx * ny)
+        rm = (spike_map / safe_occ).reshape(ny, nx)
+        rm[occ.reshape(ny, nx) == 0] = 0 
+        maps[neuron_id] = rm
+        
+    return maps
