@@ -167,7 +167,7 @@ if __name__ == "__main__":
                     pars['l_torus'] = l_torus
                     pars['thresh'] = [0,
                                       0, 
-                                       7 * (incl_ang==0) + (10 * pars['A_vest'] * np.sin(incl_ang))]#300 * (np.cos(incl_ang) + 1)]
+                                       7 * (incl_ang==0) + (15 * pars['A_vest'] * np.sin(incl_ang))]#300 * (np.cos(incl_ang) + 1)]
                                         # 200 * (1 + 1 * pars['A_vest'] * np.sin)
                     pars['thresh_weights'] = [conj_std, conj_std,
                                               0.5, 0.6]
@@ -177,7 +177,7 @@ if __name__ == "__main__":
                     
                     # pars['gain'] = [10,.1,.5]
                     # pars['k'] = [1e-3, 1e-6, 1e-3]
-                    pars['gain'] = [1,1,1e-3]
-                    pars['k'] = [1e-3, 5 * 1e-3, 0*1e-5]
+                    pars['gain'] = [1,1,1e-2]
+                    pars['k'] = [1e-3, 5 * 1e-3, 1e-4]
                     
                     run_job(**pars)
