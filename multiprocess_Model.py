@@ -91,10 +91,10 @@ if __name__ == "__main__":
     set_start_method("spawn")
 
     num = 2
-    for num in [22]:#[1,2,3,4,5]:
+    for num in range(40,46):
         load_traj = 'False'
         periodicities = [30]
-        asymmetries = [4]
+        asymmetries = [5]
         # inclination_angs = [0, jnp.pi/6, jnp.pi/3, 0]
         inclination_angs = [0, jnp.pi/3]
         L = 50
@@ -177,7 +177,7 @@ if __name__ == "__main__":
                     
                     # pars['gain'] = [10,.1,.5]
                     # pars['k'] = [1e-3, 1e-6, 1e-3]
-                    pars['gain'] = [1,1,1e-2]
-                    pars['k'] = [1e-3, 5 * 1e-3, 1e-4]
+                    pars['gain'] = [1,1,.03]
+                    pars['k'] = [1e-3, 5 * 1e-3, 1e-3]
                     
                     run_job(**pars)
