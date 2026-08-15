@@ -17,6 +17,42 @@ from src.utils import (
     compute_directional_rate_maps
 )
 
+def subsample_csv_global(input_csv='all_rats_metrics.csv', output_csv='subsampled_metrics_global.csv'):
+    # 1. Load the original dataframe
+    df = pd.read_csv(input_csv)
+    
+    # 2. Create a Unique Identifier (UID) for each neuron across all sessions
+    df['UID'] = df['Rat'].astype(str) + '_' + df['Cell_Type'] + '_' + df['Neuron_ID'].astype(str)
+    
+    # 3. Get arrays of the unique UIDs for each cell type across the whole dataset
+    unique_omni = df[df['Cell_Type'] == 'Omni']['UID'].unique()
+    unique_conj1 = df[df['Cell_Type'] == 'Conj1']['UID'].unique()
+    unique_conj2 = df[df['Cell_Type'] == 'Conj2']['UID'].unique()
+    
+    # 4. Randomly sample the exact desired number of unique neurons globally
+    np.random.seed(42)  # Set seed for reproducibility
+    sampled_omni = np.random.choice(unique_omni, size=80, replace=False)
+    sampled_conj1 = np.random.choice(unique_conj1, size=80, replace=False)
+    sampled_conj2 = np.random.choice(unique_conj2, size=50, replace=False)
+    
+    # 5. Create filtering masks based on the sampled UIDs
+    omni_mask = df['UID'].isin(sampled_omni)
+    conj1_mask = df['UID'].isin(sampled_conj1)
+    conj2_mask = df['UID'].isin(sampled_conj2)
+    
+    # 6. Apply masks to the dataframe
+    df_sub = df[omni_mask | conj1_mask | conj2_mask].copy()
+    
+    # Clean up by dropping the temporary UID column
+    df_sub = df_sub.drop(columns=['UID'])
+    
+    # 7. Save to a new CSV
+    df_sub.to_csv(output_csv, index=False)
+    
+    print(f"Original shape: {df.shape}")
+    print(f"New shape: {df_sub.shape}")
+    print(f"Saved subsampled data to: {output_csv}")
+    
 def compute_grid_metrics(autocorr):
     """
     Computes grid score and spacing based on the spatial autocorrelogram.
@@ -196,7 +232,7 @@ if __name__ == "__main__":
                         'Session_Angle': ses_label,
                         'Cell_Type': cell_name,
                         'Neuron_ID': neuron_idx,
-                        'Pref_angle': pref_angle,
+                        'Pref_Angle': pref_angle,
                         'Mean_FR': mean_fr_tot[neuron_idx],
                         'Shift_X_Total': shifts_tot[neuron_idx, 0],
                         'Shift_Y_Total': shifts_tot[neuron_idx, 1],
@@ -213,8 +249,12 @@ if __name__ == "__main__":
     # =========================================================================
     print("\nBatch processing complete. Exporting to CSV...")
     df_results = pd.DataFrame(all_data)
-    output_path = os.path.join(base_path, f'all_rats_metrics_nums{NUMS_LABEL}.csv')
+    output_path = os.path.join(base_path, 
+                               f'all_rats_metrics_nums{NUMS_LABEL}.csv')
     df_results.to_csv(output_path, index=False)
     
+    subsample_csv_global(output_path,
+                  os.path.join(base_path, 
+                               f'all_rats_metrics_subsampled_nums{NUMS_LABEL}.csv'))
     print(f"File successfully saved to: {output_path}")
     print(df_results.head())

@@ -31,10 +31,16 @@ def run_spiking_simulation_2layers(rng_key, U0, weights, traj, neural_params,
     
     pi2 = 2 * jnp.pi
     pi2_sqrt = jnp.sqrt(pi2)
-    Wvis_conj1, Wrec_conj1, Wconj1_conj2, Wconj2_omni = weights
-    pref_hd1, pref_hd2 = pref_hd
     
     U_conj10, U_conj20, U_omni0 = U0
+    
+    if len(weights) == 4:
+        Wvis_conj1, Wrec_conj1, Wconj1_conj2, Wconj2_omni = weights
+        #Wrec_conj2 = jnp.zeros((len(U_conj20),len(U_conj20)))
+    else:
+        Wvis_conj1, Wrec_conj1, Wconj1_conj2, Wrec_conj2, Wconj2_omni = weights
+    pref_hd1, pref_hd2 = pref_hd
+    
     
     tau_inv, k, g, gain = neural_params
     dt, sR, sHD_input, inc_ang, A_vis, A_hd, A_vest = input_params
@@ -49,6 +55,8 @@ def run_spiking_simulation_2layers(rng_key, U0, weights, traj, neural_params,
         a_vis = jnp.ones(steps)
     if isinstance(thresh, Number):
         thresh = [thresh] * 3
+    if isinstance(gain, Number):
+        gain = [gain] * 3
         
     norm = inc_sHD * pi2_sqrt
     
@@ -71,7 +79,7 @@ def run_spiking_simulation_2layers(rng_key, U0, weights, traj, neural_params,
         
         U_pos1 = jnp.maximum(U_conj1 - thresh[0], 0)
         norm_sq = jnp.sum(U_pos1 ** g)
-        fU_conj1_next = 10 * gain * (U_pos1 ** g) / (1 + k * norm_sq) 
+        fU_conj1_next = gain[0] * (U_pos1 ** g) / (1 + k[0] * norm_sq) 
         
         I_input1 = Wvis_conj1 @ I_vis + Wrec_conj1 @ fU_conj1_next
         I_input1 = I_input1 * I_hd1 
@@ -79,14 +87,14 @@ def run_spiking_simulation_2layers(rng_key, U0, weights, traj, neural_params,
         
         U_pos2 = jnp.maximum(U_conj2 - thresh[1], 0)
         norm_sq = jnp.sum(U_pos2 ** g)
-        fU_conj2_next = 10 * gain * (U_pos2 ** g) / (1 + k * norm_sq) 
+        fU_conj2_next = gain[1] * (U_pos2 ** g) / (1 + k[1] * norm_sq) 
         
-        I_input2 = I_hd2 * (Wconj1_conj2 @ fU_conj1_next) * I_vest
+        I_input2 = I_hd2 * I_vest * (Wconj1_conj2 @ fU_conj1_next)# + Wrec_conj2 @ fU_conj2_next) * 
         dU_conj2 = (-U_conj2 + I_input2) * tau_inv
         
         U_pos = jnp.maximum(U_omni - thresh[2], 0)
         norm_sq = jnp.sum(U_pos ** g)
-        fU_omni_next = gain * (U_pos ** g) / (1 + k * norm_sq) 
+        fU_omni_next = gain[2] * (U_pos ** g) / (1 + k[2] * norm_sq) 
         
         I_input_omni = Wconj2_omni @ fU_conj2_next
         dU_omni = (-U_omni + I_input_omni) * tau_inv

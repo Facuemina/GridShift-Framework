@@ -8,7 +8,7 @@
 
 \section*{Computational model}
 
-Our model consists of three neuronal populations ($Conj_1$, $Conj_2$, and $Omni$), artificially separated for clarity rather than representing strictly segregated neural populations. To generate activity from the animal's simulated trajectories, we employ a linear-non-linear Poisson approach: simulating firing rate dynamics via a continuous attractor neural network (CANN) and generating discrete spikes from a Poisson distribution parameterized by the computed rates.
+Our model consists of three neuronal populations ($C_1$, $C_2$, and $O$), artificially separated for clarity rather than representing strictly segregated neural populations. To generate activity from the animal's simulated trajectories, we employ a linear-non-linear Poisson approach: simulating firing rate dynamics via a continuous attractor neural network (CANN) and generating discrete spikes from a Poisson distribution parameterized by the computed rates.
 
 \subsection*{Network Dynamics}
 For any neuron $i$ in the cell population $p$, its internal state variable $U_i^{(p)}(t)$ integrates synaptic inputs firng rate dynamics:
@@ -23,25 +23,34 @@ For any neuron $i$ in the cell population $p$, its internal state variable $U_i^
 $$P(k \text{ spikes})=\frac{(r_i(t)\Delta t)^k e^{-r_i(t)\Delta t}}{k!}$$
 
 \subsection*{Topology and Connectivity}
-Neurons in each population are assigned a preferred spatial phase $\bm \Phi_i = (\Phi_i^x, \Phi_i^y)$ on a rhombic domain, corresponding to a hexagonal lattice of firing fields in physical space. Conjunctive cells are additionally assigned a preferred head direction $\theta_i$. Synaptic connections depend on the phase distance on a twisted toroidal manifold, $||\cdot||_{Torus}$, which accounts for the periodic boundaries of the grid lattice.
+Neurons in each population are assigned a preferred spatial phase $\bm \Phi_i = (\Phi_i^x, \Phi_i^y)$ on a rhombic domain, corresponding to a hexagonal lattice of firing fields in physical space. Conjunctive cells are additionally assigned a preferred head direction $\theta_i$. Synaptic connections depend on the phase distance on a twisted toroidal manifold, $||\cdot||_{Torus}$, which accounts for the periodic boundaries of the grid lattice. 
 
-\subsection*{Primary Conjunctive Layer ($Conj_1$)}
-The first layer comprises primary conjunctive grid-by-head-direction cells. These cells integrate self-motion and spatial inputs. Their input current $I_{in,i}^{Conj_1}$ is driven by bottom-up spatial visual inputs ($I_{vis}$), local head direction tuning ($I_{hd}$), and internal recurrent collateral connections ($W^{rec}$):
-$$I_{in,i}^{Conj_1}(t)=\left( I_{vis, i}(t) + \sum_j W_{ij}^{rec} r_j^{Conj_1}(t) \right) I_{hd, i}(t)$$
+Feedforward weights from a conjunctive population to another grid cell population ($C_1\rightarrow C_2$ as well as $C_2\rightarrow O$) take the form 
+
+\subsection*{Primary Conjunctive Layer ($C_1$)}
+The first layer comprises primary conjunctive grid-by-head-direction cells. These cells integrate self-motion and spatial inputs. Their input current $I_{in,i}^{C_1}$ is driven by bottom-up spatial visual inputs ($I_{vis}$), local head direction tuning ($I_{hd}$), and internal recurrent collateral connections ($W^{rec}$):
+
+\begin{equation}
+    I_{in,i}^{C_1}(t)=a_i\left( I_{vis, i}(t) + \sum_j W_{ij}^{rec} r_j^{C_1}(t) \right), \quad \text{with} \quad a_i = \exp\left(-\frac{d(\theta(t),\theta_i^{C_1})^2}{2\sigma_\text{HD}^2}\right)
+\end{equation}
+
 The recurrent weights $W_{ij}^{rec}$ between a presynaptic cell $j$ and postsynaptic cell $i$ follow a Gaussian profile centered on a shifted phase:
 $$W_{ij}^{rec}=\exp\left(-\frac{||\Phi_j - \Phi_i - \Delta_{HD}\hat{e}(\theta_j)||_{Torus}^2}{2\sigma^2}\right)$$
 where $\sigma$ controls the size of the synaptic footprint, and $\Delta_{HD}$ is an asymmetric shift along the presynaptic preferred direction $\hat{e}(\theta_j)$ to drive network translation during movement. Spatial maps in this layer do not shift upward on inclined surfaces.
 
-\subsection*{Intermediate Conjunctive Layer ($Conj_2$)}
-The second layer consists of intermediate conjunctive cells driven by feedforward projections from $Conj_1$ and modulated by vestibular signals. The net input current is:
-$$I_{in,i}^{Conj_2}(t)=I_{hd,i}(t) A_{vest, i}(t) \sum_j W_{ij}^{1 \to 2} r_j^{Conj_1}(t)$$
+\subsection*{Intermediate Conjunctive Layer ($C_2$)}
+The second layer consists of intermediate conjunctive cells driven by feedforward projections from $C_1$ and modulated by vestibular signals. The net input current is:
+
+\begin{equation}
+    I_{in,i}^{C_2}(t)=a_i (1+b_i \sin(\alpha)) \sum_j W_{ij}^{1 \to 2} r_j^{C_1}(t)
+\end{equation}
 The feedforward weights $W_{ij}^{1 \to 2}$ share the identical shifted Gaussian topology as the recurrent weights, projecting a predicted spatial phase. The vestibular gain $A_{vest, i}(t)$ incorporates slope-dependent modulation:
 $$A_{vest, i}(t)=1 + \beta_{vest} \sin(\alpha) \exp\left(-\frac{(\theta_S - \theta_i)^2}{2\sigma_S^2}\right)$$
 where $\beta_{vest}$ controls the strength of the modulation associated with slope angle $\alpha$ in the inclination direction $\theta_S$, and $\sigma_S$ dictates the directional tuning. While this gain does not affect path integration in the primary layer, it enhances the feedforward contribution of cells with an uphill-pointing preferred direction.
 
-\subsection*{Omnidirectional Grid Layer ($Omni$)}
-The final layer comprises omnidirectional grid cells. These cells lack intrinsic directional preference and receive convergent feedforward input from $Conj_2$:
-$$I_{in,i}^{Omni}(t)=\sum_j W_{ij}^{2 \to o} r_j^{Conj_2}(t)$$
-The weights $W_{ij}^{2 \to o}$ map the directionally tuned predictive activity back into a purely spatial representation. Because $Conj_2$ activity is selectively amplified by the vestibular gain, the resulting center-of-mass in the $Omni$ layer shifts upward on inclined surfaces, reproducing the experimentally observed non-directional shift.
+\subsection*{Omnidirectional Grid Layer ($O$)}
+The final layer comprises omnidirectional grid cells. These cells lack intrinsic directional preference and receive convergent feedforward input from $C_2$:
+$$I_{in,i}^{O}(t)=\sum_j W_{ij}^{2 \to o} r_j^{C_2}(t)$$
+The weights $W_{ij}^{2 \to o}$ map the directionally tuned predictive activity back into a purely spatial representation. Because $C_2$ activity is selectively amplified by the vestibular gain, the resulting center-of-mass in the $O$ layer shifts upward on inclined surfaces, reproducing the experimentally observed non-directional shift.
 
 \end{document}

@@ -163,11 +163,11 @@ if __name__ == "__main__":
                     
                     pars['A_vest'] = .8 #.5
                     pars['inclination_angle'] = incl_ang
-                    pars['seed'] = i_incl + 55 * num
+                    pars['seed'] = i_incl + 25 * num
                     pars['l_torus'] = l_torus
                     pars['thresh'] = [0,
                                       0, 
-                                       7 * (incl_ang==0) + (10 * pars['A_vest'] * np.sin(incl_ang))]#300 * (np.cos(incl_ang) + 1)]
+                                       (0 + 10 * pars['A_vest'] * np.sin(incl_ang))]#300 * (np.cos(incl_ang) + 1)]
                                         # 200 * (1 + 1 * pars['A_vest'] * np.sin)
                     pars['thresh_weights'] = [conj_std, conj_std,
                                               0.5, 0.6]

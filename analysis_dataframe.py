@@ -5,7 +5,7 @@ import seaborn as sns
 from scipy.stats import friedmanchisquare, wilcoxon
 import os
 
-def run_analysis(csv_path='all_rats_metrics.csv'):
+def run_analysis(csv_path='all_rats_metrics.csv',merge_conj = False):
     # =========================================================================
     # 1. LOAD DATA & PREPROCESSING
     # =========================================================================
@@ -17,7 +17,11 @@ def run_analysis(csv_path='all_rats_metrics.csv'):
     # Define session groupings and cell types
     all_sessions = ['0°', '30°', '60°', "0°'"]
     shift_sessions = ['30°', '60°', "0°'"]  # 0° excluded as it is the baseline for shifts
-    cell_types = ['Omni', 'Conj1', 'Conj2']
+    
+    if merge_conj:
+        cell_types = ['Omni', 'Conj']#
+    else:
+        cell_types = ['Omni', 'Conj1', 'Conj2']#
     
     # --- NEW: Categorize Conjunctive cells into UP and DOWN based on Pref_Angle ---
     df['Cell_Subtype'] = df['Cell_Type'] # Default copy
@@ -26,13 +30,17 @@ def run_analysis(csv_path='all_rats_metrics.csv'):
     up_mask = (df['Pref_Angle'] > 0) & (df['Pref_Angle'] < np.pi)
     down_mask = (df['Pref_Angle'] > np.pi) & (df['Pref_Angle'] < 2 * np.pi)
     
-    # Apply to Conj1
-    df.loc[(df['Cell_Type'] == 'Conj1') & up_mask, 'Cell_Subtype'] = 'Conj1 UP'
-    df.loc[(df['Cell_Type'] == 'Conj1') & down_mask, 'Cell_Subtype'] = 'Conj1 DOWN'
-    
-    # Apply to Conj2
-    df.loc[(df['Cell_Type'] == 'Conj2') & up_mask, 'Cell_Subtype'] = 'Conj2 UP'
-    df.loc[(df['Cell_Type'] == 'Conj2') & down_mask, 'Cell_Subtype'] = 'Conj2 DOWN'
+    if cell_types[1] == 'Conj':
+        df.loc[((df['Cell_Type'] == 'Conj1') | (df['Cell_Type'] == 'Conj2')) & up_mask, 'Cell_Subtype'] = 'Conj UP'
+        df.loc[((df['Cell_Type'] == 'Conj1') | (df['Cell_Type'] == 'Conj2')) & down_mask, 'Cell_Subtype'] = 'Conj DOWN'
+    else:
+        # Apply to Conj1
+        df.loc[(df['Cell_Type'] == 'Conj1') & up_mask, 'Cell_Subtype'] = 'Conj1 UP'
+        df.loc[(df['Cell_Type'] == 'Conj1') & down_mask, 'Cell_Subtype'] = 'Conj1 DOWN'
+        
+        # Apply to Conj2
+        df.loc[(df['Cell_Type'] == 'Conj2') & up_mask, 'Cell_Subtype'] = 'Conj2 UP'
+        df.loc[(df['Cell_Type'] == 'Conj2') & down_mask, 'Cell_Subtype'] = 'Conj2 DOWN'
 
     # Note: Cells with Pref_Angle exactly == 0 or np.pi remain just 'Conj1' or 'Conj2' 
     # and will naturally be excluded from the subtype specific analysis below.
@@ -56,11 +64,14 @@ def run_analysis(csv_path='all_rats_metrics.csv'):
     # =========================================================================
     # FIGURE 1: TOTAL SHIFTS (Separated by Cell Type)
     # =========================================================================
-    fig1, axes1 = plt.subplots(3, 2, figsize=(10, 12), sharex=True)
+    fig1, axes1 = plt.subplots(len(cell_types), 2, figsize=(10, 12), sharex=True)
     df_shifts = df[df['Session_Angle'].isin(shift_sessions)]
     
     for i, ctype in enumerate(cell_types):
-        df_sub = df_shifts[df_shifts['Cell_Type'] == ctype]
+        if ctype == 'Conj':
+            df_sub = df_shifts[(df_shifts['Cell_Type'] == 'Conj1') | (df_shifts['Cell_Type'] == 'Conj2')]
+        else:
+            df_sub = df_shifts[df_shifts['Cell_Type'] == ctype]
         
         # Shift X
         pval_x = apply_friedman(df_sub, 'Shift_X_Total', shift_sessions)
@@ -118,9 +129,12 @@ def run_analysis(csv_path='all_rats_metrics.csv'):
     # FIGURE 3: MEAN FIRING RATES (Separated by Cell Subtype)
     # =========================================================================
     # We now loop over 5 specific groups for Firing Rate analysis
-    fr_groups = ['Omni', 'Conj1 UP', 'Conj1 DOWN', 'Conj2 UP', 'Conj2 DOWN']
+    if cell_types[1] == 'Conj':
+        fr_groups = ['Omni', 'Conj UP', 'Conj DOWN']
+    else:
+        fr_groups = ['Omni', 'Conj1 UP', 'Conj1 DOWN', 'Conj2 UP', 'Conj2 DOWN']
     
-    fig3, axes3 = plt.subplots(1, 5, figsize=(20, 5))
+    fig3, axes3 = plt.subplots(1, len(cell_types)*2-1, figsize=(20, 5))
     
     for i, grp in enumerate(fr_groups):
         df_sub = df[df['Cell_Subtype'] == grp]
@@ -175,6 +189,6 @@ if __name__ == "__main__":
     base_path = os.path.split(os.getcwd())[0] 
     NUMS = range(1,6) #define rats to analyze
     NUMS_LABEL = "".join('_'+str(i) for i in NUMS)
-    output_path = os.path.join(base_path, f'all_rats_metrics_nums{NUMS_LABEL}.csv')
+    output_path = os.path.join(base_path, f'all_rats_metrics_subsampled_nums{NUMS_LABEL}.csv')
 
-    run_analysis(output_path)
+    run_analysis(output_path,merge_conj=True)

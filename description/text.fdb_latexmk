@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1786621349.7715 "c:/Users/Facundo/Desktop/Facu/Doctorado/PythonCodes/2026-GridShift/GridShift-Framework/description/text.tex" "text.pdf" "text" 1786621350.68248 0
-  "c:/Users/Facundo/Desktop/Facu/Doctorado/PythonCodes/2026-GridShift/GridShift-Framework/description/text.tex" 1786621349 4921 cf391eda8733cffcad7a7a19a8b410fa ""
+["pdflatex"] 1786800945.93999 "c:/Users/Facundo/Desktop/Facu/Doctorado/PythonCodes/2026-GridShift/GridShift-Framework/description/text.tex" "text.pdf" "text" 1786800947.27354 0
+  "c:/Users/Facundo/Desktop/Facu/Doctorado/PythonCodes/2026-GridShift/GridShift-Framework/description/text.tex" 1786800944 5193 e89a5118e47e370333fd65f3a4abde42 ""
   "c:/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1747691054 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "c:/texlive/2025/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmbsy5.tfm" 1747687700 1120 1e8878807317373affa7f7bba4cf2f6a ""
   "c:/texlive/2025/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmbsy6.tfm" 1747687700 1124 14ccf5552bc7f77ca02a8a402bea8bfb ""
@@ -79,8 +79,8 @@
   "c:/texlive/2025/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1747704377 5569470 f263a82cf6bb394f5bc87b63f38b78df ""
   "c:/texlive/2025/texmf-var/web2c/pdftex/pdflatex.fmt" 1747704729 3568607 102044f64f4379c66e54dc41d32493a1 ""
   "c:/texlive/2025/texmf.cnf" 1747704337 713 e69b156964470283e0530f5060668171 ""
-  "text.aux" 1786621350 32 044b7f8fc9779af7531264e0c5c84b6d "pdflatex"
-  "text.tex" 1786621349 4921 cf391eda8733cffcad7a7a19a8b410fa ""
+  "text.aux" 1786800947 32 ab05033ccbb38b00a31b200ccedf8001 "pdflatex"
+  "text.tex" 1786800944 5193 e89a5118e47e370333fd65f3a4abde42 ""
   (generated)
   "text.aux"
   "text.log"

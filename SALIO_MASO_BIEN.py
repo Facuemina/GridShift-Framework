@@ -94,7 +94,7 @@ if __name__ == "__main__":
     for num in [22]:#[1,2,3,4,5]:
         load_traj = 'False'
         periodicities = [30]
-        asymmetries = [4]
+        asymmetries = [7.5]
         # inclination_angs = [0, jnp.pi/6, jnp.pi/3, 0]
         inclination_angs = [0, jnp.pi/3]
         L = 50
@@ -127,7 +127,7 @@ if __name__ == "__main__":
                             'tau': 0.01, 'steps': STEPS, 'N_vis_sqrt': 25, 
                             'N_conj_sqrt1': 15, 'N_conj_sqrt2': 9, 'N_omni_sqrt': 9, 
                             'hd_modules': 8, 'input_std': 6, 'angle_std': 1.5, 
-                            'inc_angle_std': 1.8, 'k': 0.001,
+                            'inc_angle_std': 1.2, 'k': 0.001,
                             'gain': 1.2, 
                             'v': 6, 'A_vis': 30, 'A_hd': 1, 
                             'A_vest': 1, 'seed': 0, 'thresh': [0, 0, 150], 
@@ -163,21 +163,19 @@ if __name__ == "__main__":
                     
                     pars['A_vest'] = .8 #.5
                     pars['inclination_angle'] = incl_ang
-                    pars['seed'] = i_incl + 55 * num
+                    pars['seed'] = i_incl + 20 * num
                     pars['l_torus'] = l_torus
                     pars['thresh'] = [0,
-                                      0, 
-                                       7 * (incl_ang==0) + (10 * pars['A_vest'] * np.sin(incl_ang))]#300 * (np.cos(incl_ang) + 1)]
+                                      0 * pars['A_vest'] * np.sin(incl_ang), 
+                                      150 * (1 + 1 * pars['A_vest'] * np.sin(incl_ang))]#300 * (np.cos(incl_ang) + 1)]
                                         # 200 * (1 + 1 * pars['A_vest'] * np.sin)
                     pars['thresh_weights'] = [conj_std, conj_std,
-                                              0.5, 0.6]
+                                              0.5, 0.5]
                     pars['hd_modules'] = 8
                     pars['N_conj_sqrt1'] = 15
                     pars['N_conj_sqrt2'] = 9
                     
-                    # pars['gain'] = [10,.1,.5]
-                    # pars['k'] = [1e-3, 1e-6, 1e-3]
-                    pars['gain'] = [1,1,1e-3]
-                    pars['k'] = [1e-3, 5 * 1e-3, 0*1e-5]
+                    pars['gain'] = [10,.1,10]
+                    pars['k'] = [1e-3, 1e-6, 1e-1]
                     
                     run_job(**pars)

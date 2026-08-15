@@ -24,7 +24,7 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 1. CONFIGURATION
     # =========================================================================
-    num = 2
+    num = 22
     superficial = 'False'
     dark = 'True'
     SMOOTH = False
@@ -132,9 +132,12 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 4. PLOTTING: Rate Maps and Cross Corrs
     # =========================================================================
+# for NEURON_IDX in [61,70,79]:    
     print("Generating standard plots...")
     bound_x0, bound_x1 = 5, 34
     bound_y0, bound_y1 = 28, 50
+    # bound_x0, bound_x1 = 25, 50
+    # bound_y0, bound_y1 = 20, 45
 
     for i in range(len(angles)):
         if i > 0:
@@ -150,43 +153,46 @@ if __name__ == "__main__":
             plt.axis('off')
             
         # Figure 2: Trajectory Overlay - Omni
-        plt.figure(2, figsize=(16, 12))
-        
-        # Overlay Map
-        plt.subplot(3, 4, i+1)
-        idx = np.where(omni_maps[i]['spiking maps']['neuron_idx'] == NEURON_IDX)[0]
-        idx = omni_maps[i]['spiking maps']['time_idx'][idx]
-        plt.plot(traj_list[i][:, 0], traj_list[i][:, 1], color='gray', alpha=0.7)
-        plt.plot(traj_list[i][idx, 0], traj_list[i][idx, 1], '.', color='k', markersize=10)
-        
-        idx_red = np.where((traj_list[i][idx, 0] > bound_x0) & (traj_list[i][idx, 0] < bound_x1) & 
-                           (traj_list[i][idx, 1] > bound_y0) & (traj_list[i][idx, 1] < bound_y1))[0]
-        xred = traj_list[i][idx, 0][idx_red]
-        yred = traj_list[i][idx, 1][idx_red]
-        
-        if i == 0:
-            yred_cm = yred.mean()
+        if len(omni_maps[i]['spiking maps']['time_idx']) == 0:
+            print('No Omni maps!')
+        else:
+            plt.figure(2, figsize=(16, 12))
             
-        plt.plot(xred, yred, '.', color='r', markersize=10)
-        plt.plot([0, 50], [yred_cm, yred_cm], '--', color=[.0, .0, .8], linewidth=5)
-        plt.axis('off')
-        plt.title(f'Omni Traj: {angles[i]}')
-        
-        # Raw Rate Map
-        plt.subplot(3, 4, i+5)
-        RM_omni = omni_maps[i]['rate maps'][NEURON_IDX]
-        plt.imshow(RM_omni, cmap='jet', origin='lower')
-        plt.axis('off')
-        plt.title(f'Max: {RM_omni.max():.2f}, Mean: {RM_omni.mean():.2f}')
-        
-        # Single Neuron Cross Corr
-        plt.subplot(3, 4, i+9)
-        _, CC_OMNI_single = compute_cross_corrs(
-            omni_maps[i]['rate maps'][NEURON_IDX:NEURON_IDX+1],
-            omni_maps[i]['rate maps'][NEURON_IDX:NEURON_IDX+1],
-            smooth=SMOOTH, sd=sd)
-        plt.imshow(CC_OMNI_single[0], cmap='jet', origin='lower')
-        plt.axis('off')
+            # Overlay Map
+            plt.subplot(3, 4, i+1)
+            idx = np.where(omni_maps[i]['spiking maps']['neuron_idx'] == NEURON_IDX)[0]
+            idx = omni_maps[i]['spiking maps']['time_idx'][idx]
+            plt.plot(traj_list[i][:, 0], traj_list[i][:, 1], color='gray', alpha=0.7)
+            plt.plot(traj_list[i][idx, 0], traj_list[i][idx, 1], '.', color='k', markersize=10)
+            
+            idx_red = np.where((traj_list[i][idx, 0] > bound_x0) & (traj_list[i][idx, 0] < bound_x1) & 
+                               (traj_list[i][idx, 1] > bound_y0) & (traj_list[i][idx, 1] < bound_y1))[0]
+            xred = traj_list[i][idx, 0][idx_red]
+            yred = traj_list[i][idx, 1][idx_red]
+            
+            if i == 0:
+                yred_cm = yred.mean()
+                
+            plt.plot(xred, yred, '.', color='r', markersize=10)
+            plt.plot([0, 50], [yred_cm, yred_cm], '--', color=[.0, .0, .8], linewidth=5)
+            plt.axis('off')
+            plt.title(f'Omni Traj: {angles[i]}')
+            
+            # Raw Rate Map
+            plt.subplot(3, 4, i+5)
+            RM_omni = omni_maps[i]['rate maps'][NEURON_IDX]
+            plt.imshow(RM_omni, cmap='jet', origin='lower')
+            plt.axis('off')
+            plt.title(f'Max: {RM_omni.max():.2f}, Mean: {RM_omni.mean():.2f}')
+            
+            # Single Neuron Cross Corr
+            plt.subplot(3, 4, i+9)
+            _, CC_OMNI_single = compute_cross_corrs(
+                omni_maps[i]['rate maps'][NEURON_IDX:NEURON_IDX+1],
+                omni_maps[i]['rate maps'][NEURON_IDX:NEURON_IDX+1],
+                smooth=SMOOTH, sd=sd)
+            plt.imshow(CC_OMNI_single[0], cmap='jet', origin='lower')
+            plt.axis('off')
 
         # Figure 3 & 4: Trajectory Overlay - Conjunctive 1 & 2
         for cm_i, (c_maps, c_idx) in enumerate(zip([conj_maps1, conj_maps2], [conj_idx1, conj_idx2])):
@@ -264,7 +270,7 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
     
-    # =========================================================================
+    #%% =========================================================================
     # 6. PLOTTING: Mean Firing Rates
     # =========================================================================
     plt.figure(6, figsize=(15, 5))
@@ -307,7 +313,7 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
     
-    # =========================================================================
+    #%% =========================================================================
     # 7. DIRECTIONAL ANALYSIS & DATAFRAME CREATION
     # =========================================================================
     print("Computing Directional Rate Maps and Shifts...")
@@ -368,46 +374,70 @@ if __name__ == "__main__":
 
     df_shifts = pd.DataFrame(data_shifts)
     
-    # =========================================================================
+    #%% =========================================================================
     # 8. PLOTTING: Directional Comparisons
     # =========================================================================
     
     for fig_idx, (cell_name, maps_up, maps_down, subset_idx) in enumerate(cell_groups, start=7):
         plt.figure(fig_idx, figsize=(15, 5))
         
-        # UP Trajectory Plot
+        # --- 1. SEPARATE FIRING RATE LOGIC ---
+        if cell_name == 'Omni':
+            # Omni: Firing rate based on Trajectory maps
+            fr_0_up = maps_up[0][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
+            fr_pi3_up = maps_up[1][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
+            
+            fr_0_down = maps_down[0][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
+            fr_pi3_down = maps_down[1][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
+            
+            title_up = f'{cell_name} Cells (UP Traj)'
+            title_down = f'{cell_name} Cells (DOWN Traj)'
+            
+        else:
+            # Conjunctive: Firing rate based on Preferred Angle (using total maps)
+            if cell_name == 'Conj1':
+                total_maps = conj_maps1
+                idx_up = up_HD_idx1
+                idx_down = down_HD_idx1
+            else: # Conj2
+                total_maps = conj_maps2
+                idx_up = up_HD_idx2
+                idx_down = down_HD_idx2
+                
+            fr_0_up = total_maps[0]['rate maps'][idx_up].reshape((len(idx_up), -1)).mean(axis=1)
+            fr_pi3_up = total_maps[1]['rate maps'][idx_up].reshape((len(idx_up), -1)).mean(axis=1)
+            
+            fr_0_down = total_maps[0]['rate maps'][idx_down].reshape((len(idx_down), -1)).mean(axis=1)
+            fr_pi3_down = total_maps[1]['rate maps'][idx_down].reshape((len(idx_down), -1)).mean(axis=1)
+            
+            title_up = f'{cell_name} UP Neurons'
+            title_down = f'{cell_name} DOWN Neurons'
+    
+        # --- 2. UP PLOT ---
         plt.subplot(1, 3, 1)
-        fr_0_up = maps_up[0][subset_idx].reshape((len(subset_idx), nfr*nfr)).mean(axis=1)
-        # CHANGED: 2 to 1 to target the second session
-        fr_pi3_up = maps_up[1][subset_idx].reshape((len(subset_idx), nfr*nfr)).mean(axis=1)
         W_up, P_up = wilcoxon(fr_0_up, fr_pi3_up)
         
         plt.boxplot([fr_0_up, fr_pi3_up])
         plt.xticks([1, 2], ['Session 0', r'Session $\pi/3$'])
-        plt.title(f'{cell_name} Cells (UP)\nWilcoxon p={P_up:.2e}')
+        plt.title(f'{title_up}\nWilcoxon p={P_up:.2e}')
         plt.ylabel('Mean Firing Rate (Hz)')
         
-        # DOWN Trajectory Plot
+        # --- 3. DOWN PLOT ---
         plt.subplot(1, 3, 2)
-        fr_0_down = maps_down[0][subset_idx].reshape((len(subset_idx), nfr*nfr)).mean(axis=1)
-        # CHANGED: 2 to 1 to target the second session
-        fr_pi3_down = maps_down[1][subset_idx].reshape((len(subset_idx), nfr*nfr)).mean(axis=1)
         W_down, P_down = wilcoxon(fr_0_down, fr_pi3_down)
         
         plt.boxplot([fr_0_down, fr_pi3_down])
         plt.xticks([1, 2], ['Session 0', r'Session $\pi/3$'])
-        plt.title(f'{cell_name} Cells (DOWN)\nWilcoxon p={P_down:.2e}')
+        plt.title(f'{title_down}\nWilcoxon p={P_down:.2e}')
         plt.ylabel('Mean Firing Rate (Hz)')
         
-        # Y-Shifts Plot
+        # --- 4. Y-SHIFTS PLOT ---
         plt.subplot(1, 3, 3)
         data1 = df_shifts[(df_shifts['Type'] == cell_name) & 
-                          # CHANGED: angles[2] to angles[1]
                           (df_shifts['Session'] == angles[1]) & 
                           (df_shifts['Direction'] == 'Up [0, pi)')]['Shift Y']
                           
         data2 = df_shifts[(df_shifts['Type'] == cell_name) & 
-                          # CHANGED: angles[2] to angles[1]
                           (df_shifts['Session'] == angles[1]) & 
                           (df_shifts['Direction'] == 'Down [pi, 2 pi)')]['Shift Y']
                           
@@ -417,7 +447,7 @@ if __name__ == "__main__":
         W_shift, P_shift = wilcoxon(data1, data2)
         plt.title(f'{cell_name} Shift Y (Session $\pi/3$)\nWilcoxon p={P_shift:.2e}')
         plt.xticks([1, 2], labels=['Up [0, pi)', 'Down [pi, 2 pi)'])
-
+    
         plt.tight_layout()
         plt.show()
 

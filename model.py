@@ -33,8 +33,8 @@ parser.add_argument("--hd_modules", type=int, default=8)
 parser.add_argument("--input_std", type=float, default=6)
 parser.add_argument("--angle_std", type=float, default=1.)
 parser.add_argument("--inc_angle_std", type=float, default=1.)
-parser.add_argument("--k", type=float, default=.01)
-parser.add_argument("--gain", type=float, default=1.2)
+parser.add_argument("--k", type=float, nargs = 3, default=.01)
+parser.add_argument("--gain", type=float, nargs = 3, default=[12,12,1.2])
 parser.add_argument("--v", type=float, default=6)
 parser.add_argument("--A_vis", type=float, default=30)
 parser.add_argument("--A_hd", type=float, default=1)
@@ -147,9 +147,15 @@ Wrec_conj1 = jnp.maximum(Wrec_conj1-thresh_weights[1], 0) / (1.0 - thresh_weight
 Wrec_conj1 = Wrec_conj1 * gaussian(pref_hd1, pref_hd1.T, angle_std, jnp.pi*2) * angle_std*jnp.sqrt(jnp.pi*2)
 
 Wconj1_conj2 = build_torus_connectivity(X_phase_conj1, X_phase_conj2, input_std,
-                                        l_torus, l_asym=0*1.07*v*tau, hd_pre=pref_hd1.ravel())
+                                        l_torus, l_asym=1.07*v*tau, hd_pre=pref_hd1.ravel())
 Wconj1_conj2 = jnp.maximum(Wconj1_conj2-thresh_weights[2], 0) / (1.0 - thresh_weights[2])
-Wconj1_conj2 = Wconj1_conj2 * gaussian(pref_hd2, pref_hd1.T, angle_std, jnp.pi*2) * angle_std*jnp.sqrt(jnp.pi*2)
+Wconj1_conj2 = .01 * Wconj1_conj2 * gaussian(pref_hd2, pref_hd1.T, angle_std, jnp.pi*2) * angle_std*jnp.sqrt(jnp.pi*2)
+
+Wrec_conj2 = build_torus_connectivity(X_phase_conj2, X_phase_conj2, input_std,
+                                      l_torus, l_asym=1.07*v*tau, hd_pre=pref_hd2.ravel()) 
+Wrec_conj2 = jnp.maximum(Wrec_conj2-thresh_weights[1], 0) / (1.0 - thresh_weights[2])
+Wrec_conj2 = .1 * Wrec_conj2 * gaussian(pref_hd2, pref_hd2.T, angle_std, jnp.pi*2) * angle_std*jnp.sqrt(jnp.pi*2)
+
 
 Wconj2_omni = build_torus_connectivity(X_phase_conj2, X_phase_omni, input_std, 
                                        l_torus, l_asym=l_asym, hd_pre=pref_hd2.ravel())
@@ -160,11 +166,11 @@ init_pos = traj[0:1, :-1].T
 
 U_conj1 = (Wvis_conj1 @ gaussian2D(pos, init_pos, input_std, L)) * gaussian(pref_hd1, jnp.pi/2, angle_std, jnp.pi*2)
 fU_conj1 = jnp.maximum(U_conj1 - thresh[0], 0)**2    
-fU_conj1 = fU_conj1 / (1 + k * fU_conj1.sum())
+fU_conj1 = fU_conj1 / (1 + k[0] * fU_conj1.sum())
 
 U_conj2 = (Wconj1_conj2 @ fU_conj1) * gaussian(pref_hd2, jnp.pi/2, angle_std, jnp.pi*2)
 fU_conj2 = jnp.maximum(U_conj2 - thresh[1], 0)**2
-fU_conj2 = fU_conj2 / (1 + k * fU_conj2.sum())
+fU_conj2 = fU_conj2 / (1 + k[1] * fU_conj2.sum())
 
 U_omni = Wconj2_omni @ fU_conj2
 
