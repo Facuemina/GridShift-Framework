@@ -28,7 +28,7 @@ if __name__ == "__main__":
     superficial = 'False'
     dark = 'True'
     SMOOTH = False
-    NEURON_IDX = 53
+    NEURON_IDX = 61
     fact = 1.67
     nfr = int(30 * fact)
     sd = int(2 * fact)
@@ -132,12 +132,12 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 4. PLOTTING: Rate Maps and Cross Corrs
     # =========================================================================
-# for NEURON_IDX in [61,70,79]:    
+# for NEURON_IDX in [53,70,79]:    
     print("Generating standard plots...")
-    bound_x0, bound_x1 = 5, 34
-    bound_y0, bound_y1 = 28, 50
-    # bound_x0, bound_x1 = 25, 50
-    # bound_y0, bound_y1 = 20, 45
+    # bound_x0, bound_x1 = 5, 34
+    # bound_y0, bound_y1 = 28, 50
+    bound_x0, bound_x1 = 25, 50
+    bound_y0, bound_y1 = 0, 27
 
     for i in range(len(angles)):
         if i > 0:
