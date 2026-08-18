@@ -138,15 +138,18 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 2. BATCH PROCESSING LOOP
     # =========================================================================
-    NUMS = range(1, 6)
+    NUMS = range(40, 46)
     NUMS_LABEL = "".join('_'+str(i) for i in NUMS)
     for num in NUMS:
         print(f"\nProcessing Rat (num) = {num}...")
         path2load = os.path.join(base_path, f'Simulation-2layer-num{num}')
         
         # Guard in case a folder doesn't have all angles
-        current_angles = angle_labels[:len(os.listdir(path2load))]
-        
+        if len(os.listdir(path2load)) == 2:
+            current_angles = ['0°', '60°']
+        else:
+            current_angles = angle_labels
+            
         path2load_0 = os.path.join(path2load, f'incl_ang{1}')
         with open(os.path.join(path2load_0, 'parameters_complete.pkl'), 'rb') as file:
             parameters_complete = pickle.load(file)

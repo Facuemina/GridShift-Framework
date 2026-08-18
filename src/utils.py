@@ -20,7 +20,7 @@ from scipy.ndimage import gaussian_filter
 from scipy.signal import correlate2d
 from tqdm import tqdm
 
-def generate2D_pos(seed, steps, Lx, Ly, v, sigma_theta, delta_t, periodic=False):
+def generate2D_pos(steps, Lx, Ly, v, sigma_theta, delta_t, periodic=False, seed=0):
     two_pi = 2 * jnp.pi
     
     key = random.PRNGKey(seed)

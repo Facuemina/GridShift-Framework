@@ -45,6 +45,9 @@ parser.add_argument("--ACTIVATION_EXP", type=float, default=2)
 parser.add_argument("--inclination_dir", type=float, default=-np.pi/2)
 parser.add_argument("--load_traj", type=str, default="False")
 parser.add_argument("--thresh_weights", type=float, nargs=4, default=[0.3,0.3,0.3,0.3])
+parser.add_argument("--T0", type=float, default = 80)
+parser.add_argument("--T1", type=float, default = 10)
+parser.add_argument("--VISUAL", type=str, default = 'ON')
 
 args = parser.parse_args()
 
@@ -75,6 +78,8 @@ A_hd = args.A_hd * jnp.sqrt(2*jnp.pi*args.angle_std**2)
 A_vest = args.A_vest
 seed = args.seed
 thresh = args.thresh
+T0 = args.T0
+T1 = args.T1
 
 dt = args.dt
 steps = args.steps
@@ -87,9 +92,10 @@ gain = args.gain
 thresh_weights = args.thresh_weights
 ACTIVATION_EXP = args.ACTIVATION_EXP
 
+VISUAL = args.VISUAL
 #%% Trajectory
 if load_traj == 'False':
-    traj = jnp.vstack(generate2D_pos(seed, steps, L, L, v, 0.8, dt)).T
+    traj = jnp.vstack(generate2D_pos(steps, L, L, v, 0.8, dt)).T
 else:
     import scipy.io as sio
     path = r'C:\Users\Facundo\Desktop\Facu\Doctorado\PythonCodes\2D-CANN\Miao\Miao-files'
@@ -176,14 +182,24 @@ U_omni = Wconj2_omni @ fU_conj2
 
 #%% Run simulation
 neural_params = (1/tau, k, ACTIVATION_EXP, gain)
-input_params = (dt, input_std, (angle_std, inc_angle_std), inclination_angle, A_vis, A_hd, A_vest)
+input_params = (dt, input_std, (angle_std, inc_angle_std), inclination_angle, A_vis, A_hd, A_vest,T0,T1)
 weights = (Wvis_conj1, Wrec_conj1, Wconj1_conj2, Wconj2_omni)
 initial_network_state = (U_conj1, U_conj2, U_omni)
 pref_hd = (pref_hd1, pref_hd2)
 
 _, _, _, _, KEY = random.split(random.PRNGKey(seed), 5)
 
-a_vis = 1/(1 + jnp.exp((jnp.arange(steps)-steps*.1)*dt/5)) #slowly turn off visual input to anchor grid cells
+if VISUAL == 'ON':
+    a_vis = 1
+else:
+    # a_vis = 1/(1 + jnp.exp((jnp.arange(steps)-steps*.5)*dt/5)) #HALF ON
+    a_vis = 1/(1 + jnp.exp((jnp.arange(steps)-steps*.1)*dt/5)) #slowly turn off visual input to anchor grid cells
+    # a_vis += 1/(1 + jnp.exp(-(jnp.arange(steps)-3 * steps*.1)*dt/5))
+    # a_vis += 1/(1 + jnp.exp((jnp.arange(steps)-5*steps*.1)*dt/5)) 
+    # a_vis += 1/(1 + jnp.exp(-(jnp.arange(steps)-7 * steps*.1)*dt/5))
+    # a_vis += 1/(1 + jnp.exp((jnp.arange(steps)-9*steps*.1)*dt/5)) 
+    
+    # a_vis = (a_vis - a_vis.min())/(a_vis.max()-a_vis.min())
 
 final_network_state, rate_maps = run_spiking_simulation_2layers(KEY,
                                               initial_network_state,
@@ -277,7 +293,8 @@ parameters = {
     "ACTIVATION_EXP": ACTIVATION_EXP,
     "inclination_dir": inclination_dir,
     "load_traj": load_traj,
-    "thresh_weights": thresh_weights}
+    "thresh_weights": thresh_weights,
+    "T0":T0, "T1":T1}
 
 with open(os.path.join(path2save,'parameters_complete.pkl'),'wb') as file:
     pickle.dump(parameters,file)

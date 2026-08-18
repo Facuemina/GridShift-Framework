@@ -10,6 +10,16 @@
 
 Our model consists of three neuronal populations ($C_1$, $C_2$, and $O$), artificially separated for clarity rather than representing strictly segregated neural populations. To generate activity from the animal's simulated trajectories, we employ a linear-non-linear Poisson approach: simulating firing rate dynamics via a continuous attractor neural network (CANN) and generating discrete spikes from a Poisson distribution parameterized by the computed rates.
 
+
+\begin{equation}
+    \begin{aligned}
+        \tau \frac{dU_i^{(C_1)}}{dt}&=-U_i^{(C_1)} + \exp\left(-\frac{d(\theta(t),\theta_i)^2}{2\sigma_\theta^2}\right)\left(\sum_j W_{ij}^{rec}f(U_j^{C_1})+I_{vis}\right),\\
+        \tau \frac{dU_i^{(C_2)}}{dt}&=-U_i^{(C_2)} + \alpha_i(t)\exp\left(-\frac{d(\theta(t),\theta_i)^2}{2\sigma_\theta^2}\right)\left(\sum_j W_{ij}^{C_1\rightarrow C_2}f(U_j^{C_1})\right),\\
+        \tau \frac{dU_i^{(O)}}{dt}&=-U_i^{(O)} + \sum_j W_{ij}^{C_2\rightarrow O}f(U_j^{C_2}) - I_0,\\
+    \end{aligned}
+\end{equation}
+
+
 \subsection*{Network Dynamics}
 For any neuron $i$ in the cell population $p$, its internal state variable $U_i^{(p)}(t)$ integrates synaptic inputs firng rate dynamics:
 \begin{equation}

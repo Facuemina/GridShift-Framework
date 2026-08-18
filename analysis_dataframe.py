@@ -15,8 +15,8 @@ def run_analysis(csv_path='all_rats_metrics.csv',merge_conj = False):
     df['UID'] = df['Rat'].astype(str) + '_' + df['Cell_Type'] + '_' + df['Neuron_ID'].astype(str)
     
     # Define session groupings and cell types
-    all_sessions = ['0°', '30°', '60°', "0°'"]
-    shift_sessions = ['30°', '60°', "0°'"]  # 0° excluded as it is the baseline for shifts
+    all_sessions = df['Session_Angle'].unique()#['0°', '30°', '60°', "0°'"]
+    shift_sessions = all_sessions[1:]#['30°', '60°', "0°'"]  # 0° excluded as it is the baseline for shifts
     
     if merge_conj:
         cell_types = ['Omni', 'Conj']#
@@ -187,7 +187,7 @@ def run_analysis(csv_path='all_rats_metrics.csv',merge_conj = False):
 if __name__ == "__main__":
     
     base_path = os.path.split(os.getcwd())[0] 
-    NUMS = range(1,6) #define rats to analyze
+    NUMS = range(40,46) #define rats to analyze
     NUMS_LABEL = "".join('_'+str(i) for i in NUMS)
     output_path = os.path.join(base_path, f'all_rats_metrics_subsampled_nums{NUMS_LABEL}.csv')
 

@@ -24,11 +24,12 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 1. CONFIGURATION
     # =========================================================================
-    num = 22
+    num = 95
     superficial = 'False'
     dark = 'True'
+    VISUAL = 'OFF'
     SMOOTH = False
-    NEURON_IDX = 61
+    NEURON_IDX = 45#53#61
     fact = 1.67
     nfr = int(30 * fact)
     sd = int(2 * fact)
@@ -38,7 +39,7 @@ if __name__ == "__main__":
     angles = ['0', r'$\pi/6$', r'$\pi/3$', "0'"]
     
     path2load = os.path.split(os.getcwd())[0]    
-    path2load = os.path.join(path2load, f'Simulation-2layer-num{num}')
+    path2load = os.path.join(path2load, f'Simulation-2layer-VISUAL_{VISUAL}-num{num}')
     angles = angles[:len(os.listdir(path2load))]
     path2load_0 = os.path.join(path2load, f'incl_ang{1}')
     
@@ -64,8 +65,8 @@ if __name__ == "__main__":
     
     # Subsample neurons for plotting/analysis
     np.random.seed(32)
-    conj_idx1 = np.random.permutation(N_conj1)[:100]
-    conj_idx2 = np.random.permutation(N_conj2)[:100]
+    conj_idx1 = np.random.permutation(N_conj1)[:100]#np.arange(N_conj1)#
+    conj_idx2 = np.random.permutation(N_conj2)[:100]#np.arange(N_conj2)#
     
     # Identify preferred head directions
     pref_hd_all1 = np.repeat(np.linspace(0, 2*np.pi, hd_modules+1)[:-1], N_conj1 // hd_modules)
@@ -120,8 +121,15 @@ if __name__ == "__main__":
         CrossCorr_conj2.append(CC_c2)
         
         if i > 0:
-            shifts_y.append(shifts_omni[:, 1] * L / nfr)
-            shifts_x.append(shifts_omni[:, 0] * L / nfr)    
+            if len(shifts_c2)<N_conj2:
+                sh = 0
+            else:
+                sh = 0 * shifts_c2.reshape((hd_modules,
+                                        N_conj2 // hd_modules,
+                                        2)).mean(axis=0)
+            dshift = shifts_omni - sh
+            shifts_y.append(dshift[:, 1] * L / nfr)
+            shifts_x.append(dshift[:, 0] * L / nfr)    
             
             shifts_conj1_y.append(shifts_c1[:, 1] * L / nfr)
             shifts_conj1_x.append(shifts_c1[:, 0] * L / nfr)    
@@ -132,7 +140,7 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 4. PLOTTING: Rate Maps and Cross Corrs
     # =========================================================================
-# for NEURON_IDX in [53,70,79]:    
+# for NEURON_IDX in [12,45,70,79]:    
     print("Generating standard plots...")
     # bound_x0, bound_x1 = 5, 34
     # bound_y0, bound_y1 = 28, 50
@@ -433,13 +441,23 @@ if __name__ == "__main__":
         
         # --- 4. Y-SHIFTS PLOT ---
         plt.subplot(1, 3, 3)
+        if (cell_name == "Omni") and (len(shifts_c2)==N_conj2):
+            
+            sh1 = 0*np.array(df_shifts[(df_shifts['Type'] == 'Conj2') & 
+                        (df_shifts['Session'] == angles[1]) & 
+                        (df_shifts['Direction'] == 'Up [0, pi)')]['Shift Y']).reshape((hd_modules,N_conj2//hd_modules)).mean(axis=0)
+            sh2 = 0*np.array(df_shifts[(df_shifts['Type'] == 'Conj2') & 
+                        (df_shifts['Session'] == angles[1]) & 
+                        (df_shifts['Direction'] == 'Down [pi, 2 pi)')]['Shift Y']).reshape((hd_modules,N_conj2//hd_modules)).mean(axis=0)
+        else:
+            sh1, sh2 = 0, 0
         data1 = df_shifts[(df_shifts['Type'] == cell_name) & 
                           (df_shifts['Session'] == angles[1]) & 
-                          (df_shifts['Direction'] == 'Up [0, pi)')]['Shift Y']
+                          (df_shifts['Direction'] == 'Up [0, pi)')]['Shift Y'] - sh1
                           
         data2 = df_shifts[(df_shifts['Type'] == cell_name) & 
                           (df_shifts['Session'] == angles[1]) & 
-                          (df_shifts['Direction'] == 'Down [pi, 2 pi)')]['Shift Y']
+                          (df_shifts['Direction'] == 'Down [pi, 2 pi)')]['Shift Y'] - sh2
                           
         plt.boxplot([data1, data2])
         plt.axhline(0, color='k', linestyle='--')

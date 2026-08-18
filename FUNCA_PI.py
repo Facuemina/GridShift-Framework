@@ -96,7 +96,7 @@ if __name__ == "__main__":
         load_traj = 'False'
         VISUAL = 'OFF'
         periodicities = [30]
-        asymmetries = [6.5]
+        asymmetries = [5.5]
         # inclination_angs = [0, jnp.pi/6, jnp.pi/3, 0]
         inclination_angs = [0, jnp.pi/3]
         L = 50
@@ -163,12 +163,10 @@ if __name__ == "__main__":
                     # pars['gain'] = [1,1,.03] # THIS WORKS
                     # pars['k'] = [1e-3, 5 * 1e-3, 1e-3]                    
                     
-                    pars['gain'] = [1,5,.00005*3] 
+                    pars['gain'] = [1,5,.00005] 
                     pars['k'] = [1e-3, 2.5 * 1e-3, .0*1e0]
-                    # pars['gain'] = [1,5,.00005] 
-                    # pars['k'] = [1e-3, 2.5 * 1e-3, .0*1e0]
-                    pars['T0'] =350
-                    pars['T1'] = 100
+                    pars['T0'] =300
+                    pars['T1'] = 115
                     
                     # pars['gain'] = [1,1,.1]
                     # pars['k'] = [1e-3, 5 * 1e-3, 0*1e-4]

@@ -43,7 +43,7 @@ def run_spiking_simulation_2layers(rng_key, U0, weights, traj, neural_params,
     
     
     tau_inv, k, g, gain = neural_params
-    dt, sR, sHD_input, inc_ang, A_vis, A_hd, A_vest = input_params
+    dt, sR, sHD_input, inc_ang, A_vis, A_hd, A_vest, T0, T1 = input_params
         
     if isinstance(sHD_input, tuple):
         sHD, inc_sHD = sHD_input
@@ -96,7 +96,13 @@ def run_spiking_simulation_2layers(rng_key, U0, weights, traj, neural_params,
         norm_sq = jnp.sum(U_pos ** g)
         fU_omni_next = gain[2] * (U_pos ** g) / (1 + k[2] * norm_sq) 
         
-        I_input_omni = Wconj2_omni @ fU_conj2_next
+        I_input_omni = Wconj2_omni @ fU_conj2_next - (T0  + T1 * A_vest * jnp.sin(inc_ang))
+        #(50  + 15 * A_vest * jnp.sin(inc_ang))
+        #(55  + 10 * A_vest * jnp.sin(inc_ang)) #Mas o menos con 6
+        #(45  + 20 * A_vest * jnp.sin(inc_ang))
+        #(35  + 15 * A_vest * jnp.sin(inc_ang)) #ESTA VA BIEN con 6.5
+        #(45  + 15 * A_vest * jnp.sin(inc_ang))
+        #(80  + 5 * A_vest * jnp.sin(inc_ang))
         dU_omni = (-U_omni + I_input_omni) * tau_inv
         
         U_conj1_next = U_conj1 + dt * dU_conj1
