@@ -92,19 +92,19 @@ if __name__ == "__main__":
     set_start_method("spawn")
 
     num = 2
-    for num in [95]:#range(78,84):
+    for num in [100]:#range(78,84):
         load_traj = 'False'
-        VISUAL = 'OFF'
+        VISUAL = 'ON'
         periodicities = [30]
         asymmetries = [6.5]
-        # inclination_angs = [0, jnp.pi/6, jnp.pi/3, 0]
-        inclination_angs = [0, jnp.pi/3]
+        inclination_angs = [0, jnp.pi/6, jnp.pi/3, jnp.pi/3, 0]
+        # inclination_angs = [0, jnp.pi/3]
         L = 50
-        dt = 0.01#03#5 * 2
-        STEPS = int( 50000 * 0.01 / dt)
+        dt = 0.003#5 * 2
+        STEPS = int(2 * 50000 * 0.01 / dt)
         path2save0 = os.path.split(os.getcwd())[0]    
     
-        path2save0 = os.path.join(path2save0, f'Simulation-2layer-VISUAL_{VISUAL}-num{num}')
+        path2save0 = os.path.join(path2save0, f'Simulation-2layer-VISUAL_BOTH-num{num}')
         
         if not os.path.exists(path2save0):
             os.mkdir(path2save0)
@@ -113,7 +113,11 @@ if __name__ == "__main__":
         for l_torus in periodicities:
             for l_asym in asymmetries:
                 for i_incl, incl_ang in tqdm(enumerate(inclination_angs)):
-            
+                    if i_incl == 3:
+                        VISUAL = 'OFF'
+                    else:
+                        VISUAL = 'ON'
+                        
                     parameters = {'d_asym': l_asym,
                                   'inclination_angle': i_incl,
                                   'l': l_torus, 'L': L}
@@ -163,11 +167,9 @@ if __name__ == "__main__":
                     # pars['gain'] = [1,1,.03] # THIS WORKS
                     # pars['k'] = [1e-3, 5 * 1e-3, 1e-3]                    
                     
-                    pars['gain'] = [1,5,10] 
+                    pars['gain'] = [1,5,30] 
                     pars['k'] = [1e-3, 2.5 * 1e-3, 1e0]
-                    # pars['gain'] = [1,5,.00005] 
-                    # pars['k'] = [1e-3, 2.5 * 1e-3, .0*1e0]
-                    pars['T0'] =350
+                    pars['T0'] =300
                     pars['T1'] = 100
                     
                     # pars['gain'] = [1,1,.1]

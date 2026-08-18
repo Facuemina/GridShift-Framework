@@ -26,7 +26,6 @@ if __name__ == "__main__":
     # =========================================================================
     num = 95
     superficial = 'False'
-    dark = 'True'
     VISUAL = 'OFF'
     SMOOTH = False
     NEURON_IDX = 45#53#61
@@ -36,11 +35,17 @@ if __name__ == "__main__":
     i_0 = int(22 * fact)
     i_f = int(37 * fact) + 2
     
-    angles = ['0', r'$\pi/6$', r'$\pi/3$', "0'"]
-    
+       
     path2load = os.path.split(os.getcwd())[0]    
     path2load = os.path.join(path2load, f'Simulation-2layer-VISUAL_{VISUAL}-num{num}')
-    angles = angles[:len(os.listdir(path2load))]
+    
+    if len(os.listdir(path2load)) == 2:
+        angles = ['0', r'$\pi/3$']
+    elif len(os.listdir(path2load)) == 4:
+        angles = ['0', r'$\pi/6$', r'$\pi/3$', "0'"]
+    elif len(os.listdir(path2load)) == 5:
+        angles = ['0', r'$\pi/6$', r'$\pi/3$', r'$\pi/3$D', "0'"]
+    
     path2load_0 = os.path.join(path2load, f'incl_ang{1}')
     
     with open(os.path.join(path2load_0, 'parameters_complete.pkl'), 'rb') as file:
