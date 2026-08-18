@@ -163,8 +163,8 @@ if __name__ == "__main__":
                     # pars['gain'] = [1,1,.03] # THIS WORKS
                     # pars['k'] = [1e-3, 5 * 1e-3, 1e-3]                    
                     
-                    pars['gain'] = [1,5,.00005*3] 
-                    pars['k'] = [1e-3, 2.5 * 1e-3, .0*1e0]
+                    pars['gain'] = [1,5,10] 
+                    pars['k'] = [1e-3, 2.5 * 1e-3, 1e0]
                     # pars['gain'] = [1,5,.00005] 
                     # pars['k'] = [1e-3, 2.5 * 1e-3, .0*1e0]
                     pars['T0'] =350

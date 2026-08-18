@@ -13,7 +13,7 @@ Our model consists of three neuronal populations ($C_1$, $C_2$, and $O$), artifi
 
 \begin{equation}
     \begin{aligned}
-        \tau \frac{dU_i^{(C_1)}}{dt}&=-U_i^{(C_1)} + \exp\left(-\frac{d(\theta(t),\theta_i)^2}{2\sigma_\theta^2}\right)\left(\sum_j W_{ij}^{rec}f(U_j^{C_1})+I_{vis}\right),\\
+        \tau \frac{dU_i^{(C_1)}}{dt}&=-U_i^{(C_1)} + \exp\left(-\frac{d(\theta(t),\theta_i)^2}{2\sigma_\theta^2}\right)\left(\sum_j W_{ij}^\text{rec}f(U_j^{C_1})+I_{vis}\right),\\
         \tau \frac{dU_i^{(C_2)}}{dt}&=-U_i^{(C_2)} + \alpha_i(t)\exp\left(-\frac{d(\theta(t),\theta_i)^2}{2\sigma_\theta^2}\right)\left(\sum_j W_{ij}^{C_1\rightarrow C_2}f(U_j^{C_1})\right),\\
         \tau \frac{dU_i^{(O)}}{dt}&=-U_i^{(O)} + \sum_j W_{ij}^{C_2\rightarrow O}f(U_j^{C_2}) - I_0,\\
     \end{aligned}
