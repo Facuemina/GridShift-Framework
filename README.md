@@ -1,4 +1,4 @@
-# Grid-Cells on an Inclined Torus
+# Grid-Cells on an Inclined Surface
 
 This repository contains the simulation and analysis code for a model of grid cells, in which spatial and head-direction (HD) inputs drive an "omnidirectional" grid-cell population living on a twisted-torus manifold. The model includes a body/surface **inclination angle** that modulates the gain of spatially-tuned inputs as a function of the animal's heading, allowing the effect of locomotion on tilted/inclined surfaces on the grid pattern to be studied.
 
