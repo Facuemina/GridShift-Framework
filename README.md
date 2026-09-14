@@ -1,6 +1,6 @@
-# Grid-Cell Continuous Attractor Network on an Inclined Torus
+# Grid-Cells on an Inclined Surface
 
-This repository contains the simulation and analysis code for a continuous attractor network (CAN) model of grid cells, in which spatial and head-direction (HD) inputs drive an "omnidirectional" grid-cell population living on a twisted-torus manifold. The model includes a body/surface **inclination angle** that modulates the gain of spatially-tuned inputs as a function of the animal's heading, allowing the effect of locomotion on tilted/inclined surfaces on the grid pattern to be studied.
+This repository contains the simulation and analysis code for a firing rate model of grid cells, in which conjunctive grid-cell, spatial and head-direction (HD) inputs drive an "omnidirectional" grid-cell population living on a twisted-torus manifold. The model includes a body/surface **inclination angle** that modulates the gain of spatially-tuned inputs as a function of the animal's heading, allowing the effect of locomotion on tilted/inclined surfaces on the grid pattern to be studied.
 
 The `data/` folder contains the simulation outputs used to produce the figures and statistics reported in the associated paper.
 
