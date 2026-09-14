@@ -83,6 +83,12 @@ def generate2D_pos(steps, Lx, Ly, v, sigma_theta, delta_t, periodic=False, seed=
     _, traj = lax.scan(step, init_carry, v, length=steps)
     return traj
 
+@jit
+def gaussian(x, y, std, L):
+    dx = jnp.minimum(jnp.abs(x - y), L - jnp.abs(x - y))
+    norm = 1 / jnp.sqrt(2 * jnp.pi * std**2)
+    return jnp.exp(-0.5 * (dx / std) ** 2) * norm
+
 def map2torus_fn(x, y, l, phase=jnp.array([0., 0.]), orientation=0.):
     angle = jnp.pi / 3
 
@@ -130,7 +136,9 @@ def build_torus_connectivity(
     map2torus_fn=map2torus_fn,
     distance_torus_fn=distance_torus_sq
 ):
-    if hd_pre is None or l_asym == 0.0:
+    is_scalar_zero = isinstance(l_asym, (int, float)) and l_asym == 0.0
+
+    if hd_pre is None or is_scalar_zero:
         X_target = X_pre
     else:
         dx = l_asym * jnp.cos(hd_pre)
@@ -150,23 +158,6 @@ def build_torus_connectivity(
     
     return W
 
-def build_feedforward_connectivity(
-    X_space, 
-    X_phases, 
-    sigma, 
-    torus_l, 
-    orientation=0.0
-):
-    x_mapped, y_mapped = map2torus_fn(X_space[:, 0], X_space[:, 1], l=torus_l, orientation=orientation)
-    X_space_folded = jnp.column_stack((x_mapped, y_mapped))
-    
-    X_target_exp = X_space_folded[None, :, :] 
-    X_phases_exp = X_phases[:, None, :]        
-    
-    dist_matrix_sq = distance_torus_sq(X_target_exp, X_phases_exp, torus_l)
-    W = jnp.exp(- dist_matrix_sq / (2 * sigma ** 2))
-    
-    return W
 
 def generate_uniform_toroidal_phase_distribution(nx, ny, l):
     x = jnp.zeros(nx*ny)
@@ -335,20 +326,16 @@ def load_and_compute_maps_from_sparse(num, sim_folder, nx=30, ny=30, sigma=3):
         raise FileNotFoundError(f"Simulation directory not found: {sim_folder}")
         
     loaded_maps = {}
-    loaded_maps_conj1 = {}
-    loaded_maps_conj2 = {}
     traj_list = []
     
-    folder_list = [l for l in os.listdir(sim_folder) if os.path.isdir(os.path.join(sim_folder, l))]
+    folder_list = [l for l in os.listdir(sim_folder) if (os.path.isdir(os.path.join(sim_folder, l)) and 'incl_ang' in l)]
     
     for fldr_idx, folder_name in enumerate(folder_list):
         folder_path = os.path.join(sim_folder, folder_name)
         
         param_path = os.path.join(folder_path, 'parameters_complete.pkl')
         traj_path = os.path.join(folder_path, 'traj.npy')
-        omni_spikes_path = os.path.join(folder_path, 'sparse_spikes_omni.pkl')
-        conj_spikes_path1 = os.path.join(folder_path, 'sparse_spikes_conj1.pkl')
-        conj_spikes_path2 = os.path.join(folder_path, 'sparse_spikes_conj2.pkl')
+        spikes_path = os.path.join(folder_path, 'sparse_spikes.pkl')
         
         if not os.path.exists(param_path) or not os.path.exists(traj_path):
             print(f"Skipping {folder_name}: Missing files.")
@@ -363,44 +350,25 @@ def load_and_compute_maps_from_sparse(num, sim_folder, nx=30, ny=30, sigma=3):
         L = params['L']
         dt = params['dt']
         
-        with open(omni_spikes_path, 'rb') as file:
-            omni_spikes = pickle.load(file)
-        with open(conj_spikes_path1, 'rb') as file:
-            conj_spikes1 = pickle.load(file)
-        with open(conj_spikes_path2, 'rb') as file:
-            conj_spikes2 = pickle.load(file)
+        with open(spikes_path, 'rb') as file:
+            spikes = pickle.load(file)
 
-        N_omni = np.max(omni_spikes['neuron_idx']) + 1 if len(omni_spikes['neuron_idx']) > 0 else 0
-        N_conj1 = np.max(conj_spikes1['neuron_idx']) + 1 if len(conj_spikes1['neuron_idx']) > 0 else 0
-        N_conj2 = np.max(conj_spikes2['neuron_idx']) + 1 if len(conj_spikes2['neuron_idx']) > 0 else 0
-
+        N = np.max(spikes['neuron_idx']) + 1 if len(spikes['neuron_idx']) > 0 else 0
+        
         print(f"Computing maps for {folder_name}...")
-        rate_map_omni = compute_rate_maps_from_sparse(
-            omni_spikes, traj, np.arange(N_omni), L, dt, nx=nx, ny=ny, sigma_val=sigma)
-        rate_map_conj1 = compute_rate_maps_from_sparse(
-            conj_spikes1, traj, np.arange(N_conj1), L, dt, nx=nx, ny=ny, sigma_val=sigma)
-        rate_map_conj2 = compute_rate_maps_from_sparse(
-            conj_spikes2, traj, np.arange(N_conj2), L, dt, nx=nx, ny=ny, sigma_val=sigma)
+        rate_map = compute_rate_maps_from_sparse(
+            spikes, traj, np.arange(N), L, dt, nx=nx, ny=ny, sigma_val=sigma)
         
         loaded_maps[fldr_idx] = {'spiking maps': {}}
-        loaded_maps_conj1[fldr_idx] = {'spiking maps': {}}
-        loaded_maps_conj2[fldr_idx] = {'spiking maps': {}}
         
-        loaded_maps[fldr_idx]['rate maps'] = rate_map_omni
-        loaded_maps[fldr_idx]['spiking maps']['neuron_idx'] = omni_spikes['neuron_idx']
-        loaded_maps[fldr_idx]['spiking maps']['time_idx'] = omni_spikes['time_idx']
+        loaded_maps[fldr_idx]['rate maps'] = rate_map
+        loaded_maps[fldr_idx]['spiking maps']['neuron_idx'] = spikes['neuron_idx']
+        loaded_maps[fldr_idx]['spiking maps']['time_idx'] = spikes['time_idx']
         
-        loaded_maps_conj1[fldr_idx]['rate maps'] = rate_map_conj1
-        loaded_maps_conj1[fldr_idx]['spiking maps']['neuron_idx'] = conj_spikes1['neuron_idx']
-        loaded_maps_conj1[fldr_idx]['spiking maps']['time_idx'] = conj_spikes1['time_idx']
-        
-        loaded_maps_conj2[fldr_idx]['rate maps'] = rate_map_conj2
-        loaded_maps_conj2[fldr_idx]['spiking maps']['neuron_idx'] = conj_spikes2['neuron_idx']
-        loaded_maps_conj2[fldr_idx]['spiking maps']['time_idx'] = conj_spikes2['time_idx']
-        
-        print(f"Finished {folder_name}. Shapes: Omni {rate_map_omni.shape}, Conj1 {rate_map_conj1.shape}, Conj2 {rate_map_conj2.shape}")
+        print(f"Finished {folder_name}. Shapes: {rate_map.shape}")
             
-    return loaded_maps, loaded_maps_conj1, loaded_maps_conj2, traj_list
+    return loaded_maps, traj_list
+
 
 def compute_cross_corrs(fr_maps0, fr_maps1, sd=2, smooth=False):
     CrossCorr = np.zeros((fr_maps0.shape[0], fr_maps0.shape[1]*2-1, fr_maps0.shape[1]*2-1))

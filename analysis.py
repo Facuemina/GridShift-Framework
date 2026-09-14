@@ -11,40 +11,33 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from scipy.stats import friedmanchisquare, wilcoxon
-from scipy.ndimage import gaussian_filter
+from scipy.stats import friedmanchisquare, wilcoxon, mannwhitneyu
 
-from src.utils import (
+from matplotlib.patches import ConnectionPatch
+from utils import (
     load_and_compute_maps_from_sparse,
     compute_cross_corrs,
-    compute_directional_rate_maps
+    compute_directional_rate_maps,
+    find_spatial_shift_subpixel
 )
-
+#%%
 if __name__ == "__main__":
     #%% =========================================================================
     # 1. CONFIGURATION
     # =========================================================================
-    num = 95
-    superficial = 'False'
-    VISUAL = 'OFF'
-    SMOOTH = False
-    NEURON_IDX = 45#53#61
+    num = 8
+    SMOOTH = True
+    NEURON_IDX = 34
     fact = 1.67
-    nfr = int(30 * fact)
-    sd = int(2 * fact)
-    i_0 = int(22 * fact)
-    i_f = int(37 * fact) + 2
-    
+    nfr = 50
+    sd = 3
+    i_0 = 36
+    i_f = 63
        
     path2load = os.path.split(os.getcwd())[0]    
-    path2load = os.path.join(path2load, f'Simulation-2layer-VISUAL_{VISUAL}-num{num}')
+    path2load = os.path.join(path2load, f'Simulation-spatial-num{num}')
     
-    if len(os.listdir(path2load)) == 2:
-        angles = ['0', r'$\pi/3$']
-    elif len(os.listdir(path2load)) == 4:
-        angles = ['0', r'$\pi/6$', r'$\pi/3$', "0'"]
-    elif len(os.listdir(path2load)) == 5:
-        angles = ['0', r'$\pi/6$', r'$\pi/3$', r'$\pi/3$D', "0'"]
+    angles = ['0°', r'30°', r'60°', "0°'"]
     
     path2load_0 = os.path.join(path2load, f'incl_ang{1}')
     
@@ -54,115 +47,82 @@ if __name__ == "__main__":
     L = parameters_complete['L']
     hd_modules = parameters_complete['hd_modules']
     dt = parameters_complete['dt']
-
+    
     #%% =========================================================================
     # 2. DATA LOADING & PREPARATION
     # =========================================================================
     print("Loading data and computing rate maps...")
-    omni_maps, conj_maps1, conj_maps2, traj_list = load_and_compute_maps_from_sparse(
+    omni_maps, traj_list = load_and_compute_maps_from_sparse(
         num=num, sim_folder=path2load, nx=nfr, ny=nfr
     )
         
     nfr = omni_maps[0]['rate maps'].shape[1]
     N = omni_maps[0]['rate maps'].shape[0]
-    N_conj1 = conj_maps1[0]['rate maps'].shape[0]
-    N_conj2 = conj_maps2[0]['rate maps'].shape[0]
     
-    # Subsample neurons for plotting/analysis
-    np.random.seed(32)
-    conj_idx1 = np.random.permutation(N_conj1)[:100]#np.arange(N_conj1)#
-    conj_idx2 = np.random.permutation(N_conj2)[:100]#np.arange(N_conj2)#
     
-    # Identify preferred head directions
-    pref_hd_all1 = np.repeat(np.linspace(0, 2*np.pi, hd_modules+1)[:-1], N_conj1 // hd_modules)
-    pref_hd_all2 = np.repeat(np.linspace(0, 2*np.pi, hd_modules+1)[:-1], N_conj2 // hd_modules)
-    
-    pref_hd_subset1 = pref_hd_all1[conj_idx1]
-    up_HD_idx1 = conj_idx1[np.where((pref_hd_subset1 > 0) & (pref_hd_subset1 < np.pi))[0]]
-    down_HD_idx1 = conj_idx1[np.where((pref_hd_subset1 > np.pi) & (pref_hd_subset1 < 2*np.pi))[0]]
-    
-    pref_hd_subset2 = pref_hd_all2[conj_idx2]
-    up_HD_idx2 = conj_idx2[np.where((pref_hd_subset2 > 0) & (pref_hd_subset2 < np.pi))[0]]
-    down_HD_idx2 = conj_idx2[np.where((pref_hd_subset2 > np.pi) & (pref_hd_subset2 < 2*np.pi))[0]]
-
     #%% =========================================================================
     # 3. COMPUTATIONS (Mean FRs, Cross-Correlations, Shifts)
     # =========================================================================
     print("Computing Cross Correlations and Shifts...")
-    mean_fr_omni, mean_fr_conj1, mean_fr_conj2 = [], [], []
-    mean_fr_conj_up1, mean_fr_conj_down1 = [], []
-    mean_fr_conj_up2, mean_fr_conj_down2 = [], []
-    
-    CrossCorr_omni, CrossCorr_conj1, CrossCorr_conj2 = [], [], []
+    mean_fr_omni = []
+    CrossCorr_omni = []
     shifts_x, shifts_y = [], []
-    shifts_conj1_x, shifts_conj1_y = [], []
-    shifts_conj2_x, shifts_conj2_y = [], []
+    
+    idx_discard = np.array([])
+    
+    for i in range(len(angles)):
+        
+        # Cross-Correlations and Shifts (relative to baseline session 0)
+        shifts_omni, CC = compute_cross_corrs(
+            omni_maps[0]['rate maps'], omni_maps[i]['rate maps'], smooth=SMOOTH, sd=sd)
+        CrossCorr_omni.append(CC)
+        
+        idx = np.where(np.isnan(CC.mean(axis=2).mean(axis=1)))[0]
+        idx_discard = np.concat((idx_discard,idx))
+        
+        
+        if i>0:
+            shifts_x.append(shifts_omni[:,0])
+            shifts_y.append(shifts_omni[:,1])
+    
+    idx_discard = np.unique(idx_discard)
+    idx_analyze = np.array([i for i in range(N) if i not in idx_discard])
     
     for i in range(len(angles)):
         shape = omni_maps[i]['rate maps'].shape
-        
+        if i>0:
+            shifts_x[i-1] = shifts_x[i-1][idx_analyze]
+            shifts_y[i-1] = shifts_y[i-1][idx_analyze]
         # Mean Firing Rates
-        mean_fr_omni.append(omni_maps[i]['rate maps'].reshape((N, shape[1]*shape[2])).mean(axis=1))
+        mean_fr_omni.append(omni_maps[i]['rate maps'][idx_analyze].reshape((len(idx_analyze), shape[1]*shape[2])).mean(axis=1))
         
-        mean_fr_conj1.append(conj_maps1[i]['rate maps'].reshape((N_conj1, shape[1]*shape[2])).mean(axis=1))
-        mean_fr_conj_up1.append(mean_fr_conj1[i][up_HD_idx1])
-        mean_fr_conj_down1.append(mean_fr_conj1[i][down_HD_idx1])
-
-        mean_fr_conj2.append(conj_maps2[i]['rate maps'].reshape((N_conj2, shape[1]*shape[2])).mean(axis=1))
-        mean_fr_conj_up2.append(mean_fr_conj2[i][up_HD_idx2])
-        mean_fr_conj_down2.append(mean_fr_conj2[i][down_HD_idx2])
-        
-        # Cross-Correlations and Shifts (relative to baseline session 0)
-        shifts_omni, CC_omni = compute_cross_corrs(
-            omni_maps[0]['rate maps'], omni_maps[i]['rate maps'], smooth=SMOOTH, sd=sd)
-        CrossCorr_omni.append(CC_omni)
-        
-        shifts_c1, CC_c1 = compute_cross_corrs(
-            conj_maps1[0]['rate maps'][conj_idx1], conj_maps1[i]['rate maps'][conj_idx1], smooth=SMOOTH, sd=sd)
-        CrossCorr_conj1.append(CC_c1)
-        
-        shifts_c2, CC_c2 = compute_cross_corrs(
-            conj_maps2[0]['rate maps'][conj_idx2], conj_maps2[i]['rate maps'][conj_idx2], smooth=SMOOTH, sd=sd)
-        CrossCorr_conj2.append(CC_c2)
-        
-        if i > 0:
-            if len(shifts_c2)<N_conj2:
-                sh = 0
-            else:
-                sh = 0 * shifts_c2.reshape((hd_modules,
-                                        N_conj2 // hd_modules,
-                                        2)).mean(axis=0)
-            dshift = shifts_omni - sh
-            shifts_y.append(dshift[:, 1] * L / nfr)
-            shifts_x.append(dshift[:, 0] * L / nfr)    
-            
-            shifts_conj1_y.append(shifts_c1[:, 1] * L / nfr)
-            shifts_conj1_x.append(shifts_c1[:, 0] * L / nfr)    
-            
-            shifts_conj2_y.append(shifts_c2[:, 1] * L / nfr)
-            shifts_conj2_x.append(shifts_c2[:, 0] * L / nfr)
-
     #%% =========================================================================
     # 4. PLOTTING: Rate Maps and Cross Corrs
     # =========================================================================
-# for NEURON_IDX in [12,45,70,79]:    
+
     print("Generating standard plots...")
-    # bound_x0, bound_x1 = 5, 34
-    # bound_y0, bound_y1 = 28, 50
-    bound_x0, bound_x1 = 25, 50
+    
+    bound_x0, bound_x1 = 22, 50
     bound_y0, bound_y1 = 0, 27
 
+    row1_axes = []
+    
+    fig = plt.figure(2, figsize=(16, 12))
+    
     for i in range(len(angles)):
         if i > 0:
             # Figure 1: Mean Cross Correlograms
             plt.figure(1, figsize=(15, 10))
-            plt.subplot(2, 3, i)
-            plt.imshow(CrossCorr_omni[i].mean(axis=0), cmap='jet')
+            plt.subplot(2, 4, i)
+            CC_MEAN = np.nanmean(CrossCorr_omni[i][idx_analyze,:],axis=0)
+            plt.imshow(CC_MEAN, cmap='jet')
             plt.axis('off')
             plt.title(f'Mean CC: {angles[i]}')
             
-            plt.subplot(2, 3, i+3)
-            plt.imshow(CrossCorr_omni[i].mean(axis=0)[i_0:i_f, i_0:i_f], cmap='jet')
+            plt.subplot(2, 4, i+4)
+            plt.imshow(CC_MEAN[i_0:i_f, i_0:i_f], cmap='jet')
+            DeltaP = find_spatial_shift_subpixel(CC_MEAN, n=7, search_radius_pixels=7)
+            plt.title(rf'$\Delta_P$ = {DeltaP[0]:.2f}')
             plt.axis('off')
             
         # Figure 2: Trajectory Overlay - Omni
@@ -172,7 +132,9 @@ if __name__ == "__main__":
             plt.figure(2, figsize=(16, 12))
             
             # Overlay Map
-            plt.subplot(3, 4, i+1)
+            ax = plt.subplot(3, 5, i+1)
+            row1_axes.append(ax) # Save the axis reference for later
+            
             idx = np.where(omni_maps[i]['spiking maps']['neuron_idx'] == NEURON_IDX)[0]
             idx = omni_maps[i]['spiking maps']['time_idx'][idx]
             plt.plot(traj_list[i][:, 0], traj_list[i][:, 1], color='gray', alpha=0.7)
@@ -187,102 +149,85 @@ if __name__ == "__main__":
                 yred_cm = yred.mean()
                 
             plt.plot(xred, yred, '.', color='r', markersize=10)
-            plt.plot([0, 50], [yred_cm, yred_cm], '--', color=[.0, .0, .8], linewidth=5)
+            
             plt.axis('off')
             plt.title(f'Omni Traj: {angles[i]}')
             
             # Raw Rate Map
-            plt.subplot(3, 4, i+5)
+            plt.subplot(3, 5, i+6)
             RM_omni = omni_maps[i]['rate maps'][NEURON_IDX]
             plt.imshow(RM_omni, cmap='jet', origin='lower')
             plt.axis('off')
-            plt.title(f'Max: {RM_omni.max():.2f}, Mean: {RM_omni.mean():.2f}')
+            plt.title(f'Max: {RM_omni.max():.2f} Hz, \n Mean: {RM_omni.mean():.2f} Hz')
             
             # Single Neuron Cross Corr
-            plt.subplot(3, 4, i+9)
+            plt.subplot(3, 5, i+11)
             _, CC_OMNI_single = compute_cross_corrs(
                 omni_maps[i]['rate maps'][NEURON_IDX:NEURON_IDX+1],
                 omni_maps[i]['rate maps'][NEURON_IDX:NEURON_IDX+1],
                 smooth=SMOOTH, sd=sd)
             plt.imshow(CC_OMNI_single[0], cmap='jet', origin='lower')
             plt.axis('off')
+    
+    # Select the first subplot (index 0) and the fourth subplot (index 3)
+    ax_start = row1_axes[0]
+    ax_end = row1_axes[3] 
+    
+    # Create the line bridging ax_start to ax_end
+    con = ConnectionPatch(xyA=(0, yred_cm), xyB=(50, yred_cm),
+                      coordsA="data", coordsB="data",
+                      axesA=ax_start, axesB=ax_end,
+                      color=[.0, .0, .8], linestyle='--', linewidth=2)
 
-        # Figure 3 & 4: Trajectory Overlay - Conjunctive 1 & 2
-        for cm_i, (c_maps, c_idx) in enumerate(zip([conj_maps1, conj_maps2], [conj_idx1, conj_idx2])):
-            plt.figure(3 + cm_i, figsize=(16, 12))
-            
-            plt.subplot(3, 4, i+1)
-            idx_c = np.where(c_maps[i]['spiking maps']['neuron_idx'] == c_idx[NEURON_IDX])[0]
-            idx_c = c_maps[i]['spiking maps']['time_idx'][idx_c]
-            plt.plot(traj_list[i][:, 0], traj_list[i][:, 1], color='gray', alpha=0.7)
-            plt.plot(traj_list[i][idx_c, 0], traj_list[i][idx_c, 1], '.', color='r', markersize=10)
-            plt.axis('off')
-            plt.title(f'Conj{cm_i+1} Traj: {angles[i]}')
-            
-            plt.subplot(3, 4, i+5)
-            RM_conj = c_maps[i]['rate maps'][c_idx[NEURON_IDX]]
-            plt.imshow(RM_conj, cmap='jet', origin='lower')
-            plt.axis('off')
-            plt.title(f'Max: {RM_conj.max():.2f}, Mean: {RM_conj.mean():.2f}')
-            
-            plt.subplot(3, 4, i+9)
-            _, CC_CONJ_single = compute_cross_corrs(
-                c_maps[i]['rate maps'][NEURON_IDX:NEURON_IDX+1],
-                c_maps[i]['rate maps'][NEURON_IDX:NEURON_IDX+1],
-                smooth=SMOOTH, sd=sd)
-            plt.imshow(CC_CONJ_single[0], cmap='jet', origin='lower')
-            plt.axis('off')
+    # Add the line to the FIGURE, not the subplot
+    con.set_annotation_clip(False)
+    fig.add_artist(con)      
+
+    plt.figure(1)
+    plt.savefig(os.path.join(path2load,'Figures/CrossCorrelograms_zoom.svg'),format='svg')
+
+    plt.figure(2)
+    plt.savefig(os.path.join(path2load,'Figures/SpatialMaps.svg'),format='svg')
 
     plt.show()
 
     #%% =========================================================================
     # 5. PLOTTING: Spatial Shifts (Boxplots)
     # =========================================================================
-    plt.figure(5, figsize=(10, 10))
+    plt.figure(5, figsize=(10, 5))
     
     # Omnidirectional Cells
-    plt.subplot(3, 2, 1)
+    
+    plt.subplot(1, 2, 1)
     sns.boxplot(data=shifts_x, fill=False)
-    plt.plot([-1, 3], [0, 0], '--k')
-    if len(shifts_x) > 1:
+    plt.plot([-1, len(shifts_x)], [0, 0], '--k')
+    if len(shifts_x) > 2:
         F, P = friedmanchisquare(*shifts_x)
         plt.title(f'Omni X Shift (F p-val={P:.2e})')
-    plt.xlim([-.5, 2.5])
+    elif len(shifts_x) > 1:
+        U, P = mannwhitneyu(*shifts_x)
+        plt.title(f'Omni X Shift (U p-val={P:.2e})')
+    plt.xlim([-.5, len(shifts_x) - .5])
     plt.xticks(range(len(angles)-1), labels=angles[1:])
     
-    plt.subplot(3, 2, 2)
+    plt.subplot(1, 2, 2)
     sns.boxplot(data=shifts_y, fill=False)
-    plt.plot([-1, 3], [0, 0], '--k')
-    if len(shifts_y) > 1:
+    plt.plot([-1, len(shifts_y)], [0, 0], '--k')
+    if len(shifts_y) > 2:
         F, P = friedmanchisquare(*shifts_y)
         plt.title(f'Omni Y Shift (F p-val={P:.2e})')
-    plt.xlim([-.5, 2.5])
+    elif len(shifts_y) > 1:
+       U, P = mannwhitneyu(*shifts_y)
+       plt.title(f'Omni Y Shift (U p-val={P:.2e})')
+    plt.xlim([-.5, len(shifts_y)-.5])
     plt.xticks(range(len(angles)-1), labels=angles[1:])
     
-    # Conjunctive Cells 1 & 2
-    for i_shift, (shifts_conj_x, shifts_conj_y) in enumerate(zip([shifts_conj1_x, shifts_conj2_x], [shifts_conj1_y, shifts_conj2_y])):
-        
-        plt.subplot(3, 2, 2 * i_shift + 3)
-        sns.boxplot(data=shifts_conj_x, fill=False)
-        plt.plot([-1, 3], [0, 0], '--k')
-        if len(shifts_conj_x) > 1:
-            F, P = friedmanchisquare(*shifts_conj_x)
-            plt.title(f'Conj{i_shift+1} X Shift (F p-val={P:.2e})')
-        plt.xlim([-.5, 2.5])
-        plt.xticks(range(len(angles)-1), labels=angles[1:])
-        
-        plt.subplot(3, 2, 2 * i_shift + 4)
-        sns.boxplot(data=shifts_conj_y, fill=False)
-        plt.plot([-1, 3], [0, 0], '--k')
-        if len(shifts_conj_y) > 1:
-            F, P = friedmanchisquare(*shifts_conj_y)
-            plt.title(f'Conj{i_shift+1} Y Shift (F p-val={P:.2e})')
-        plt.xlim([-.5, 2.5])
-        plt.xticks(range(len(angles)-1), labels=angles[1:])
-    
+       
     plt.tight_layout()
-    plt.show()
     
+    plt.figure(5)
+    plt.savefig(os.path.join(path2load,'Figures/Shifts_Y.svg'),format='svg')
+
     #%% =========================================================================
     # 6. PLOTTING: Mean Firing Rates
     # =========================================================================
@@ -295,35 +240,10 @@ if __name__ == "__main__":
         plt.title(f'Omni FR (F p-val={P:.2e})')
     plt.xticks(np.arange(1, len(angles)+1), labels=angles)
     
-    plt.subplot(1, 5, 2)
-    plt.boxplot(mean_fr_conj_up1)
-    if len(mean_fr_conj_up1)>2:
-        F, P = friedmanchisquare(*mean_fr_conj_up1)
-        plt.title(f'Conj1 UP FR (F p-val={P:.2e})')
-    plt.xticks(np.arange(1, len(angles)+1), labels=angles)
-    
-    plt.subplot(1, 5, 3)
-    plt.boxplot(mean_fr_conj_down1)
-    if len(mean_fr_conj_down1)>2:
-        F, P = friedmanchisquare(*mean_fr_conj_down1)
-        plt.title(f'Conj1 DOWN FR (F p-val={P:.2e})')
-    plt.xticks(np.arange(1, len(angles)+1), labels=angles)
-    
-    plt.subplot(1, 5, 4)
-    plt.boxplot(mean_fr_conj_up1)
-    if len(mean_fr_conj_up1)>2:
-        F, P = friedmanchisquare(*mean_fr_conj_up2)
-        plt.title(f'Conj1 UP FR (F p-val={P:.2e})')
-    plt.xticks(np.arange(1, len(angles)+1), labels=angles)
-    
-    plt.subplot(1, 5, 5)
-    plt.boxplot(mean_fr_conj_down1)
-    if len(mean_fr_conj_down1)>2:
-        F, P = friedmanchisquare(*mean_fr_conj_down2)
-        plt.title(f'Conj1 DOWN FR (F p-val={P:.2e})')
-    plt.xticks(np.arange(1, len(angles)+1), labels=angles)
+    plt.ylim([0,1])
     
     plt.tight_layout()
+    plt.savefig(os.path.join(path2load,'Figures/Mean_fr.svg'),format='svg')
     plt.show()
     
     #%% =========================================================================
@@ -331,8 +251,6 @@ if __name__ == "__main__":
     # =========================================================================
     print("Computing Directional Rate Maps and Shifts...")
     omni_up, omni_down = [], []
-    conj1_up, conj1_down = [], []
-    conj2_up, conj2_down = [], []
 
     for i in range(len(angles)):
         is_up = (traj_list[i][:, 2] >= 0) & (traj_list[i][:, 2] < np.pi)
@@ -344,26 +262,16 @@ if __name__ == "__main__":
         omni_down.append(compute_directional_rate_maps(
             omni_maps[i]['spiking maps'], traj_list[i], is_down, N, L, dt, nx=nfr, ny=nfr))
             
-        # Compute Directional Maps for Conj1
-        conj1_up.append(compute_directional_rate_maps(
-            conj_maps1[i]['spiking maps'], traj_list[i], is_up, N_conj1, L, dt, nx=nfr, ny=nfr))
-        conj1_down.append(compute_directional_rate_maps(
-            conj_maps1[i]['spiking maps'], traj_list[i], is_down, N_conj1, L, dt, nx=nfr, ny=nfr))
-            
-        # Compute Directional Maps for Conj2
-        conj2_up.append(compute_directional_rate_maps(
-            conj_maps2[i]['spiking maps'], traj_list[i], is_up, N_conj2, L, dt, nx=nfr, ny=nfr))
-        conj2_down.append(compute_directional_rate_maps(
-            conj_maps2[i]['spiking maps'], traj_list[i], is_down, N_conj2, L, dt, nx=nfr, ny=nfr))
-
+        omni_up[i] = omni_up[i][idx_analyze]
+        omni_down[i] = omni_down[i][idx_analyze]
+        
     data_shifts = []
     session_labels = angles[1:] 
     
     # Bundle the populations to avoid repeating code
     cell_groups = [
-        ('Omni', omni_up, omni_down, np.arange(N)),
-        ('Conj1', conj1_up, conj1_down, conj_idx1),
-        ('Conj2', conj2_up, conj2_down, conj_idx2)
+        ('Omni', omni_up, omni_down, np.arange(len(idx_analyze))),
+        
     ]
     
     for i, ses_label in enumerate(session_labels, start=1):
@@ -386,100 +294,167 @@ if __name__ == "__main__":
                                     'Mean Fr': mean_fr_down[j], 'Direction': r'Down [pi, 2 pi)', 'Type': cell_name})
 
     df_shifts = pd.DataFrame(data_shifts)
-    
-    #%% =========================================================================
-    # 8. PLOTTING: Directional Comparisons
-    # =========================================================================
-    
-    for fig_idx, (cell_name, maps_up, maps_down, subset_idx) in enumerate(cell_groups, start=7):
-        plt.figure(fig_idx, figsize=(15, 5))
-        
-        # --- 1. SEPARATE FIRING RATE LOGIC ---
-        if cell_name == 'Omni':
-            # Omni: Firing rate based on Trajectory maps
-            fr_0_up = maps_up[0][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
-            fr_pi3_up = maps_up[1][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
-            
-            fr_0_down = maps_down[0][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
-            fr_pi3_down = maps_down[1][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
-            
-            title_up = f'{cell_name} Cells (UP Traj)'
-            title_down = f'{cell_name} Cells (DOWN Traj)'
-            
-        else:
-            # Conjunctive: Firing rate based on Preferred Angle (using total maps)
-            if cell_name == 'Conj1':
-                total_maps = conj_maps1
-                idx_up = up_HD_idx1
-                idx_down = down_HD_idx1
-            else: # Conj2
-                total_maps = conj_maps2
-                idx_up = up_HD_idx2
-                idx_down = down_HD_idx2
-                
-            fr_0_up = total_maps[0]['rate maps'][idx_up].reshape((len(idx_up), -1)).mean(axis=1)
-            fr_pi3_up = total_maps[1]['rate maps'][idx_up].reshape((len(idx_up), -1)).mean(axis=1)
-            
-            fr_0_down = total_maps[0]['rate maps'][idx_down].reshape((len(idx_down), -1)).mean(axis=1)
-            fr_pi3_down = total_maps[1]['rate maps'][idx_down].reshape((len(idx_down), -1)).mean(axis=1)
-            
-            title_up = f'{cell_name} UP Neurons'
-            title_down = f'{cell_name} DOWN Neurons'
-    
-        # --- 2. UP PLOT ---
-        plt.subplot(1, 3, 1)
-        W_up, P_up = wilcoxon(fr_0_up, fr_pi3_up)
-        
-        plt.boxplot([fr_0_up, fr_pi3_up])
-        plt.xticks([1, 2], ['Session 0', r'Session $\pi/3$'])
-        plt.title(f'{title_up}\nWilcoxon p={P_up:.2e}')
-        plt.ylabel('Mean Firing Rate (Hz)')
-        
-        # --- 3. DOWN PLOT ---
-        plt.subplot(1, 3, 2)
-        W_down, P_down = wilcoxon(fr_0_down, fr_pi3_down)
-        
-        plt.boxplot([fr_0_down, fr_pi3_down])
-        plt.xticks([1, 2], ['Session 0', r'Session $\pi/3$'])
-        plt.title(f'{title_down}\nWilcoxon p={P_down:.2e}')
-        plt.ylabel('Mean Firing Rate (Hz)')
-        
-        # --- 4. Y-SHIFTS PLOT ---
-        plt.subplot(1, 3, 3)
-        if (cell_name == "Omni") and (len(shifts_c2)==N_conj2):
-            
-            sh1 = 0*np.array(df_shifts[(df_shifts['Type'] == 'Conj2') & 
-                        (df_shifts['Session'] == angles[1]) & 
-                        (df_shifts['Direction'] == 'Up [0, pi)')]['Shift Y']).reshape((hd_modules,N_conj2//hd_modules)).mean(axis=0)
-            sh2 = 0*np.array(df_shifts[(df_shifts['Type'] == 'Conj2') & 
-                        (df_shifts['Session'] == angles[1]) & 
-                        (df_shifts['Direction'] == 'Down [pi, 2 pi)')]['Shift Y']).reshape((hd_modules,N_conj2//hd_modules)).mean(axis=0)
-        else:
-            sh1, sh2 = 0, 0
-        data1 = df_shifts[(df_shifts['Type'] == cell_name) & 
-                          (df_shifts['Session'] == angles[1]) & 
-                          (df_shifts['Direction'] == 'Up [0, pi)')]['Shift Y'] - sh1
-                          
-        data2 = df_shifts[(df_shifts['Type'] == cell_name) & 
-                          (df_shifts['Session'] == angles[1]) & 
-                          (df_shifts['Direction'] == 'Down [pi, 2 pi)')]['Shift Y'] - sh2
-                          
-        plt.boxplot([data1, data2])
-        plt.axhline(0, color='k', linestyle='--')
-        
-        W_shift, P_shift = wilcoxon(data1, data2)
-        plt.title(f'{cell_name} Shift Y (Session $\pi/3$)\nWilcoxon p={P_shift:.2e}')
-        plt.xticks([1, 2], labels=['Up [0, pi)', 'Down [pi, 2 pi)'])
-    
-        plt.tight_layout()
-        plt.show()
 
+#%%
+from scipy.stats import kruskal, pearsonr
+
+def get_spatial_correlation(acg1, acg2):
+    """Computes the Pearson correlation between two 2D autocorrelograms."""
+    # Mask out NaNs (e.g., circular borders in grid cell autocorrelograms)
+    valid = ~np.isnan(acg1) & ~np.isnan(acg2)
+    
+    # If the overlap is too small, return NaN to avoid spurious correlations
+    if np.sum(valid) < 10: 
+        return np.nan
+        
+    r, _ = pearsonr(acg1[valid], acg2[valid])
+    return r
+
+def sample_pair_correlations(list_a, list_b, n_pairs=350, seed=0):
+    """Randomly samples unique cell pairs and computes their correlation."""
+    rng = np.random.default_rng(seed)
+    
+    # 1. Generate all possible unique pair indices
+    if list_a is list_b:
+        # Within-session: extract upper triangle indices (no self-pairs, no duplicates)
+        idx_pairs = np.array(np.triu_indices(len(list_a), k=1)).T
+    else:
+        # Cross-session: cartesian product of all indices
+        idx_pairs = np.array(np.meshgrid(np.arange(len(list_a)), 
+                                         np.arange(len(list_b)))).T.reshape(-1, 2)
+        
+    # 2. Sample N pairs without replacement
+    max_possible_pairs = len(idx_pairs)
+    sample_size = min(n_pairs, max_possible_pairs)
+    sampled_indices = rng.choice(idx_pairs, size=sample_size, replace=False)
+    
+    # 3. Compute correlations
+    correlations = []
+    for i, j in sampled_indices:
+        r = get_spatial_correlation(list_a[i], list_b[j])
+        if not np.isnan(r):
+            correlations.append(r)
+            
+    return np.array(correlations)
+
+
+# DIRECTIONAL COMPARISONS
+plt.figure(7,figsize=(10,5))
+plt.subplot(1, 2, 1)
+
+data1 = df_shifts[(df_shifts['Type'] == cell_name) & 
+                  (df_shifts['Session'] == angles[1]) & 
+                  (df_shifts['Direction'] == 'Up [0, pi)')]['Shift Y'] 
+                  
+data2 = df_shifts[(df_shifts['Type'] == cell_name) & 
+                  (df_shifts['Session'] == angles[1]) & 
+                  (df_shifts['Direction'] == 'Down [pi, 2 pi)')]['Shift Y']
+                  
+plt.boxplot([data1, data2])
+plt.axhline(0, color='k', linestyle='--')
+
+W_shift, P_shift = wilcoxon(data1, data2)
+plt.title(f'Shift Y (Session 60°)\n Wilcoxon p={P_shift:.2e}')
+plt.xticks([1, 2], labels=['Up [0, pi)', 'Down [pi, 2 pi)'])
+
+# CORRELATION ANALYSIS
+# Generate distributions
+_, acg_0_deg = compute_cross_corrs(
+    omni_maps[3]['rate maps'], omni_maps[3]['rate maps'], smooth=SMOOTH, sd=sd)
+_, acg_60_deg = compute_cross_corrs(
+    omni_maps[2]['rate maps'], omni_maps[2]['rate maps'], smooth=SMOOTH, sd=sd)
+
+dist_0_0 = sample_pair_correlations(acg_0_deg, acg_0_deg, n_pairs=350)
+dist_60_60 = sample_pair_correlations(acg_60_deg, acg_60_deg, n_pairs=350)
+dist_0_60 = sample_pair_correlations(acg_0_deg, acg_60_deg, n_pairs=350)
+
+# Kruskal-Wallis H-test
+h_stat, p_val = kruskal(dist_0_0, dist_60_60, dist_0_60)
+print(f"Kruskal-Wallis test: H = {h_stat:.2f}, p = {p_val:.2f}")
+
+
+plt.subplot(1, 2, 2)
+# Visualization
+plt.boxplot([dist_0_0, dist_60_60, dist_0_60])
+plt.xticks([1,2,3],labels=['0° vs 0°', '60° vs 60°', '0° vs 60°'])
+plt.yticks([0.6,0.7,0.8,0.9,1.])
+plt.ylabel('Pearson Correlation (r)')
+plt.title(f"Population Analysis \n Kruskal-Wallis test: H = {h_stat:.2f}, p = {p_val:.2f}")
+
+plt.savefig(os.path.join(path2load,'Figures/UP_DOWN-Correlation.svg'),format='svg')
+
+plt.show()
+    #%% =========================================================================
+    # 10. DATAFRAMES: Firing Rates and Friedman/Dunn Tests
     # =========================================================================
-    # 9. FINAL PARAMETER PRINT
-    # =========================================================================
-    print(f"l_asym = {parameters_complete['l_asym']:.2f}")
-    print(f"l_torus = {parameters_complete['l_torus']:.2f}")
-    print(f"input_std = {parameters_complete['input_std']:.2f}")
-    if 'thresh' in parameters_complete:
-        print(f"thresh = {parameters_complete['thresh']}")
-    print(f"inclination_dir = {parameters_complete['inclination_dir']}")
+import scikit_posthocs as sp
+print("Generating Firing Rate DataFrame...")
+
+fr_data = []
+
+# 1. Loop over all sessions/angles to extract Firing Rates
+for i, ang in enumerate(angles):
+    # Extract TOTAL Firing Rates (computed in Section 3)
+    for n_idx, fr in enumerate(mean_fr_omni[i]):
+        fr_data.append({'Neuron_ID': n_idx, 'Cell_Type': 'Omni', 'Angle': ang, 'Direction': 'Total', 'Firing_Rate': fr})
+    
+    # Extract UP and DOWN Firing Rates (using maps_up/maps_down from Section 7)
+    for cell_name, maps_up, maps_down, subset_idx in cell_groups:
+        fr_up = maps_up[i][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
+        fr_down = maps_down[i][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
+        
+        for j, fr in enumerate(fr_up):
+            # Here subset_idx is correct because maps_up was already subsetted
+            fr_data.append({'Neuron_ID': subset_idx[j], 'Cell_Type': cell_name, 'Angle': ang, 'Direction': 'Up', 'Firing_Rate': fr})
+        for j, fr in enumerate(fr_down):
+            fr_data.append({'Neuron_ID': subset_idx[j], 'Cell_Type': cell_name, 'Angle': ang, 'Direction': 'Down', 'Firing_Rate': fr})
+            
+df_firing_rates = pd.DataFrame(fr_data)
+print(f"Created df_firing_rates with {len(df_firing_rates)} rows.")
+
+
+print("Generating Friedman Tests and Dunn Post-Hoc DataFrame...")
+
+# 2. Compute Friedman tests for all shift types
+friedman_results = []
+
+shift_dict = {
+    'Omni_X': shifts_x,
+    'Omni_Y': shifts_y
+}
+
+for shift_name, shift_list in shift_dict.items():
+    # Friedman test requires at least 2 groups (i.e., > 2 angular sessions)
+    if len(shift_list) > 1: 
+        stat, p_val = friedmanchisquare(*shift_list)
+        friedman_results.append({
+            'Shift_Type': shift_name,
+            'Friedman_Stat': stat,
+            'p_value': p_val,
+            'Significant': p_val < 0.05
+        })
+    else:
+        friedman_results.append({
+            'Shift_Type': shift_name,
+            'Friedman_Stat': np.nan,
+            'p_value': np.nan,
+            'Significant': False
+        })
+        
+df_friedman = pd.DataFrame(friedman_results)
+
+# 3. Compute Post hoc Dunn's test strictly for Omni Shift Y
+if len(shifts_y) > 1:
+    # Run Dunn's test with Bonferroni correction
+    df_dunn_omni_y = sp.posthoc_dunn(shifts_y, p_adjust='bonferroni')
+    
+    # Format the matrix headers/indexes to match your session labels
+    session_labels = angles[1:]
+    df_dunn_omni_y.columns = session_labels
+    df_dunn_omni_y.index = session_labels
+    
+    print("\nOmni Y-Shift Dunn's Test Results:")
+    print(df_dunn_omni_y)
+else:
+    df_dunn_omni_y = pd.DataFrame()
+    print("\nNot enough sessions to run a post hoc Dunn's test on Omni Y-shifts.")
