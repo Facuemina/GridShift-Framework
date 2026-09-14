@@ -1,6 +1,6 @@
-# Grid-Cells on an Inclined Surface
+# Grid-Cell Continuous Attractor Network on an Inclined Torus
 
-This repository contains the simulation and analysis code for a model of grid cells, in which spatial and head-direction (HD) inputs drive an "omnidirectional" grid-cell population living on a twisted-torus manifold. The model includes a body/surface **inclination angle** that modulates the gain of spatially-tuned inputs as a function of the animal's heading, allowing the effect of locomotion on tilted/inclined surfaces on the grid pattern to be studied.
+This repository contains the simulation and analysis code for a continuous attractor network (CAN) model of grid cells, in which spatial and head-direction (HD) inputs drive an "omnidirectional" grid-cell population living on a twisted-torus manifold. The model includes a body/surface **inclination angle** that modulates the gain of spatially-tuned inputs as a function of the animal's heading, allowing the effect of locomotion on tilted/inclined surfaces on the grid pattern to be studied.
 
 The `data/` folder contains the simulation outputs used to produce the figures and statistics reported in the associated paper.
 
@@ -24,6 +24,17 @@ The `data/` folder contains the simulation outputs used to produce the figures a
   - *Omnidirectional* output cells (`N_omni_sqrt²`), which receive convergent input from the spatial and conjunctive populations through connectivity built on a twisted torus (`build_torus_connectivity`, `map2torus_fn`, `distance_torus_sq`).
 - **Inclination modulation**: an `inclination_angle` parameter multiplicatively modulates the spatial input gain (`A_mod`, `inc_angle_std`) for the subset of head directions aligned with `inclination_dir`, and additively shifts global inhibition (`T0`, `T1`) — modeling how a change in the plane/slope of locomotion (e.g., pitch/tilt of the head or environment) reshapes grid-cell firing.
 - **Dynamics**: The omnidirectional population is a leaky-integrator attractor network (`tau`, `k`, `gain`) integrated with `lax.scan`; spikes are drawn from a Poisson process on the resulting firing rates and stored as sparse `(time_idx, neuron_idx, counts)` triplets.
+
+### The inclination-induced shift effect
+
+Each omnidirectional cell pools input from spatial cells across all `hd_modules` head-direction preferences. Inclination breaks the symmetry of that pooling: spatial cells whose preferred heading points *uphill* are modulated differently from those pointing *downhill* (via `A_mod`, `inc_angle_std`, and `inclination_dir` in `simulation.py`), so the two sub-populations no longer contribute equally to the summed drive.
+
+- **Uphill movement**: the "downhill-preferring" spatial input is boosted, pulling the peak of the summed input (and hence the rectified, normalized firing field) forward along the trajectory.
+- **Downhill movement**: the "uphill-preferring" spatial input is boosted instead, pulling the peak backward relative to baseline.
+
+Because the boosted sub-population differs between uphill and downhill running, the net effect is not a simple rescaling but a **direction-dependent spatial shift** of each cell's firing field relative to its flat-terrain (baseline) position — visible at the population level as a rotation/displacement of the averaged 2D HD × spatial contribution (e.g., the 60° vs. 0° inclination comparison), and at the single-cell level as a horizontal offset between the modulated and baseline input/firing-rate curves.
+
+This is exactly what the `data` pipeline in `utils.py`/`analysis.py` measures: `compute_rate_maps_from_sparse` → `compute_cross_corrs` → `find_spatial_shift_subpixel` computes, for every cell, the sub-pixel offset between its baseline (0° inclination) rate map and its rate map at a given inclination angle, and `analysis.py` aggregates these offsets into the `Shift X` / `Shift Y` distributions and the corresponding Friedman/Wilcoxon/Dunn statistics, split further by running direction (`Up` vs. `Down`) to test whether the shift itself is direction-dependent.
 
 ## Requirements
 
