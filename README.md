@@ -27,7 +27,7 @@ The `data/` folder contains the simulation outputs used to produce the figures a
 
 ### The inclination-induced shift effect
 
-![Inclination-induced shift mechanism](scheme.pdf)
+![Inclination-induced shift mechanism](scheme.svg)
 
 Each omnidirectional cell pools input from spatial cells across all `hd_modules` head-direction preferences. Inclination breaks the symmetry of that pooling: spatial cells whose preferred heading points *uphill* are modulated differently from those pointing *downhill* (via `A_mod`, `inc_angle_std`, and `inclination_dir` in `simulation.py`), so the two sub-populations no longer contribute equally to the summed drive.
 
