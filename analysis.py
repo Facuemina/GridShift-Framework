@@ -25,7 +25,7 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 1. CONFIGURATION
     # =========================================================================
-    num = 8
+    num = 0
     SMOOTH = True
     NEURON_IDX = 34
     fact = 1.67
@@ -34,8 +34,10 @@ if __name__ == "__main__":
     i_0 = 36
     i_f = 63
        
-    path2load = os.path.split(os.getcwd())[0]    
-    path2load = os.path.join(path2load, f'Simulation-spatial-num{num}')
+    path2load = os.getcwd()  
+    path2load = os.path.join(path2load, 'data', f'Simulation-spatial-num{num}')
+    
+    path2save = os.path.join(path2load,'Figures')
     
     angles = ['0°', r'30°', r'60°', "0°'"]
     
@@ -61,10 +63,10 @@ if __name__ == "__main__":
     
     
     #%% =========================================================================
-    # 3. COMPUTATIONS (Mean FRs, Cross-Correlations, Shifts)
+    # 3. COMPUTATIONS (Cross-Correlations, Shifts)
     # =========================================================================
     print("Computing Cross Correlations and Shifts...")
-    mean_fr_omni = []
+    
     CrossCorr_omni = []
     shifts_x, shifts_y = [], []
     
@@ -93,9 +95,7 @@ if __name__ == "__main__":
         if i>0:
             shifts_x[i-1] = shifts_x[i-1][idx_analyze]
             shifts_y[i-1] = shifts_y[i-1][idx_analyze]
-        # Mean Firing Rates
-        mean_fr_omni.append(omni_maps[i]['rate maps'][idx_analyze].reshape((len(idx_analyze), shape[1]*shape[2])).mean(axis=1))
-        
+
     #%% =========================================================================
     # 4. PLOTTING: Rate Maps and Cross Corrs
     # =========================================================================
@@ -229,25 +229,7 @@ if __name__ == "__main__":
     plt.savefig(os.path.join(path2load,'Figures/Shifts_Y.svg'),format='svg')
 
     #%% =========================================================================
-    # 6. PLOTTING: Mean Firing Rates
-    # =========================================================================
-    plt.figure(6, figsize=(15, 5))
-    
-    plt.subplot(1, 5, 1)
-    plt.boxplot(mean_fr_omni)
-    if len(mean_fr_omni)>2:
-        F, P = friedmanchisquare(*mean_fr_omni)
-        plt.title(f'Omni FR (F p-val={P:.2e})')
-    plt.xticks(np.arange(1, len(angles)+1), labels=angles)
-    
-    plt.ylim([0,1])
-    
-    plt.tight_layout()
-    plt.savefig(os.path.join(path2load,'Figures/Mean_fr.svg'),format='svg')
-    plt.show()
-    
-    #%% =========================================================================
-    # 7. DIRECTIONAL ANALYSIS & DATAFRAME CREATION
+    # 6. DIRECTIONAL ANALYSIS & DATAFRAME CREATION
     # =========================================================================
     print("Computing Directional Rate Maps and Shifts...")
     omni_up, omni_down = [], []
@@ -279,19 +261,17 @@ if __name__ == "__main__":
             
             # --- UP Trajectory Analysis ---
             s_up, _ = compute_cross_corrs(maps_up[0][subset_idx], maps_up[i][subset_idx], smooth=SMOOTH, sd=sd)
-            mean_fr_up = maps_up[i][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
             
             for j, (sx, sy) in enumerate(zip(s_up[:, 0] * L / nfr, s_up[:, 1] * L / nfr)):
                 data_shifts.append({'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 
-                                    'Mean Fr': mean_fr_up[j], 'Direction': r'Up [0, pi)', 'Type': cell_name})
+                                    'Direction': r'Up [0, pi)', 'Type': cell_name})
             
             # --- DOWN Trajectory Analysis ---
             s_down, _ = compute_cross_corrs(maps_down[0][subset_idx], maps_down[i][subset_idx], smooth=SMOOTH, sd=sd)
-            mean_fr_down = maps_down[i][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)  
                           
             for j, (sx, sy) in enumerate(zip(s_down[:, 0] * L / nfr, s_down[:, 1] * L / nfr)):
                 data_shifts.append({'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 
-                                    'Mean Fr': mean_fr_down[j], 'Direction': r'Down [pi, 2 pi)', 'Type': cell_name})
+                                    'Direction': r'Down [pi, 2 pi)', 'Type': cell_name})
 
     df_shifts = pd.DataFrame(data_shifts)
 
@@ -388,34 +368,10 @@ plt.show()
     # 10. DATAFRAMES: Firing Rates and Friedman/Dunn Tests
     # =========================================================================
 import scikit_posthocs as sp
-print("Generating Firing Rate DataFrame...")
-
-fr_data = []
-
-# 1. Loop over all sessions/angles to extract Firing Rates
-for i, ang in enumerate(angles):
-    # Extract TOTAL Firing Rates (computed in Section 3)
-    for n_idx, fr in enumerate(mean_fr_omni[i]):
-        fr_data.append({'Neuron_ID': n_idx, 'Cell_Type': 'Omni', 'Angle': ang, 'Direction': 'Total', 'Firing_Rate': fr})
-    
-    # Extract UP and DOWN Firing Rates (using maps_up/maps_down from Section 7)
-    for cell_name, maps_up, maps_down, subset_idx in cell_groups:
-        fr_up = maps_up[i][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
-        fr_down = maps_down[i][subset_idx].reshape((len(subset_idx), -1)).mean(axis=1)
-        
-        for j, fr in enumerate(fr_up):
-            # Here subset_idx is correct because maps_up was already subsetted
-            fr_data.append({'Neuron_ID': subset_idx[j], 'Cell_Type': cell_name, 'Angle': ang, 'Direction': 'Up', 'Firing_Rate': fr})
-        for j, fr in enumerate(fr_down):
-            fr_data.append({'Neuron_ID': subset_idx[j], 'Cell_Type': cell_name, 'Angle': ang, 'Direction': 'Down', 'Firing_Rate': fr})
-            
-df_firing_rates = pd.DataFrame(fr_data)
-print(f"Created df_firing_rates with {len(df_firing_rates)} rows.")
-
 
 print("Generating Friedman Tests and Dunn Post-Hoc DataFrame...")
 
-# 2. Compute Friedman tests for all shift types
+# 1. Compute Friedman tests for all shift types
 friedman_results = []
 
 shift_dict = {
@@ -443,7 +399,7 @@ for shift_name, shift_list in shift_dict.items():
         
 df_friedman = pd.DataFrame(friedman_results)
 
-# 3. Compute Post hoc Dunn's test strictly for Omni Shift Y
+# 2. Compute Post hoc Dunn's test strictly for Omni Shift Y
 if len(shifts_y) > 1:
     # Run Dunn's test with Bonferroni correction
     df_dunn_omni_y = sp.posthoc_dunn(shifts_y, p_adjust='bonferroni')
