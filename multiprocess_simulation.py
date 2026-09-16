@@ -72,10 +72,11 @@ def run_job(path2save, l_asym, l_torus, inclination_angle,
 if __name__ == "__main__":
     set_start_method("spawn")
 
-    num = 3
+    num = 200
+    #112 VA
     load_traj= 'True'        
     l_torus = 30
-    l_asym = 7
+    l_asym = 6.5
     inclination_angs = [0, jnp.pi/6, jnp.pi/3, 0]
     # inclination_angs = [0, jnp.pi/3]
 
@@ -88,8 +89,11 @@ if __name__ == "__main__":
         os.mkdir(path2save0)
     print(path2save0)
     
-    seeds = [7,9,8,10]
-    
+    if len(inclination_angs) == 2:
+        seeds = [7,9,8,10]
+    else:
+        seeds = [7,8,9,10]
+        
     for i_incl, incl_ang in tqdm(enumerate(inclination_angs)):
             
         parameters = {'d_asym': l_asym,
@@ -108,8 +112,11 @@ if __name__ == "__main__":
                 inclination_angle = incl_ang,
                 seed = seeds[i_incl],
                 dt = 0.003,
-                gain=2,
-                T0 = 20,#10,#20, 
-                T1 = 15,#12,#0,
-                A_mod = 3)#20)#17)                          
+                gain=1, 
+                T0 = 15,#10,#20, 
+                T1 = 5,#12,#0,
+                A_mod = 4.2)#20)#17)       
+                # T0 = 13,#10,#20, 
+                # T1 = 3,#12,#0,
+                # A_mod = 4.7)#20)#17)                          
                             

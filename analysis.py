@@ -25,9 +25,9 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 1. CONFIGURATION
     # =========================================================================
-    num = 3
+    num = 111#112
     SMOOTH = True
-    NEURON_IDX = 45#34
+    NEURON_IDX = 23#1
     fact = 1.67
     nfr = 50
     sd = 3
@@ -53,7 +53,7 @@ if __name__ == "__main__":
         os.mkdir(os.path.join(path2load,'Figures'))
     
     if len(os.listdir(path2load)) == 3:
-        angles = ['0°', r'30°']
+        angles = ['0°', r'60°']
     else:
         angles = ['0°', r'30°', r'60°', "0°'"]
     # angles = ['0°', r'60°']
@@ -113,12 +113,18 @@ if __name__ == "__main__":
     # bound_y0, bound_y1 =-10, 22
     # bound_x0, bound_x1 = -10, 20
     # bound_y0, bound_y1 =5, 30
-    bound_x0, bound_x1 = 25, 60
-    bound_y0, bound_y1 =5, 30
+    # bound_x0, bound_x1 = 25, 60
+    # bound_y0, bound_y1 =1, 30
     
-    # bound_x0, bound_x1 = 14, 40
+    # bound_x0, bound_x1 = 14, 34#0
     # bound_y0, bound_y1 = 27, 60
-
+    if NEURON_IDX == 23:
+        bound_x0, bound_x1 = 20, 48
+        bound_y0, bound_y1 = 21, 45
+    elif NEURON_IDX == 1:
+        bound_y0, bound_y1 = 15, 40    
+        bound_x0, bound_x1 = 14, 34
+        
     row1_axes = []
     
     fig = plt.figure(2, figsize=(20, 12))
