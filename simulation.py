@@ -20,7 +20,7 @@ from utils import (generate2D_pos,
 parser = argparse.ArgumentParser()
 parser.add_argument("--path2save", type=str, default='GridShift-Trial-num0')
 parser.add_argument("--path2load_traj", type=str, default='')
-parser.add_argument("--l_asym", type=float, default=5)
+parser.add_argument("--l_asym", type=float, default=6)
 parser.add_argument("--dt", type=float, default=.005)
 parser.add_argument("--inclination_angle", type=float, default=jnp.pi/3*0)
 parser.add_argument("--L", type=float, default=50)
@@ -34,8 +34,8 @@ parser.add_argument("--hd_modules", type=int, default=8)
 parser.add_argument("--input_std", type=float, default=6)
 parser.add_argument("--angle_std", type=float, default=1.5)
 parser.add_argument("--inc_angle_std", type=float, default=.6)
-parser.add_argument("--k", type=float, default=10)
-parser.add_argument("--gain", type=float, default=1)
+parser.add_argument("--k", type=float, default=.1)
+parser.add_argument("--gain", type=float, default=10)
 parser.add_argument("--v", type=float, default=6)
 parser.add_argument("--A_spat", type=float, default=1)
 parser.add_argument("--A_conj", type=float, default=1)
@@ -43,9 +43,9 @@ parser.add_argument("--A_mod", type=float, default=3)
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--inclination_dir", type=float, default=3*np.pi/2)
 parser.add_argument("--load_traj", type=str, default="False")
-parser.add_argument("--thresh_weights", type=float, default=0.2)
-parser.add_argument("--T0", type=float, default = 25)
-parser.add_argument("--T1", type=float, default = 2*10-5)
+parser.add_argument("--thresh_weights", type=float, default=0.)
+parser.add_argument("--T0", type=float, default = 40)#17)
+parser.add_argument("--T1", type=float, default = 12)#20)
 
 args = parser.parse_args()
 
@@ -165,6 +165,11 @@ for i in range(hd_modules):
 
 #%% Set neural currents
 Iinh = (T0 + T1 * jnp.sin(inclination_angle) ) * jnp.ones(steps)
+# ff = .5
+# norm = jnp.sqrt(2*jnp.pi) * inc_angle_std * ff
+# Iinh = T0 + T1 * jnp.sin(inclination_angle) * norm * gaussian(traj[:,2],inclination_dir,inc_angle_std*ff,jnp.pi*2)
+# modinh = .5 * (jnp.cos(traj[:,2]-inclination_dir) + 1)
+# Iinh = T0 + T1 * jnp.sin(inclination_angle)  * (modinh*.3 + .7)
 
 I_spat_list = jnp.zeros((hd_modules,N_omni,steps))
 I_conj_list = jnp.zeros((hd_modules,N_omni,steps))
@@ -197,7 +202,7 @@ def step(U_omni, seq_vars):
     dU_omni = (-U_omni + I_spat + I_conj - Iinh) * tau_inv          
     U_omni_next = U_omni + dt * dU_omni
     U_pos = jnp.maximum(U_omni_next,0) ** 2
-    fU_omni_next = gain * (U_pos ** 2) / (1 + k * U_pos.sum()) 
+    fU_omni_next = gain * (U_pos) / (1 + k * U_pos.sum()) 
     
     return U_omni_next, fU_omni_next
     
@@ -221,6 +226,22 @@ sparse_spike_data = {
     'counts': counts
 }
 
+# %%
+# import matplotlib.pyplot as plt
+# from utils import compute_rate_maps_from_sparse
+# rm = compute_rate_maps_from_sparse(sparse_spike_data,traj[I0:], jnp.arange(N_omni), 50, dt, 50, 50)
+
+# plt.figure(figsize=(10,5))
+# plt.subplot(121)
+# plt.imshow(rm[0],origin='lower')
+# plt.subplot(122)
+# plt.plot(traj[I0:,0],traj[I0:,1])
+# idx = sparse_spike_data['time_idx'][np.where(sparse_spike_data['neuron_idx']==0)[0]]+I0
+# plt.plot(traj[idx,0],traj[idx,1],'r.')
+# plt.title(f'{rm.mean():.2f}')
+# plt.axis('off')
+
+# print(rm.mean())
 #%% Save data
 with open(os.path.join(path2save,"sparse_spikes.pkl"), "wb") as f:
     pickle.dump(sparse_spike_data, f)

@@ -17,7 +17,7 @@ import numpy as np
 def run_job(path2save, l_asym, l_torus, inclination_angle, 
             L=50, dt=0.005, steps=int(5 * 1e4),
             N_spat_sqrt=15, N_conj_sqrt=15, N_omni_sqrt=9,
-            k=10, gain=1, v=6, 
+            k=.1, gain=1, v=6, 
             A_mod=3, A_conj=1, A_spat=1,
             seed=0,
             tau=0.01, 
@@ -26,11 +26,14 @@ def run_job(path2save, l_asym, l_torus, inclination_angle,
             inclination_dir=1.5*np.pi, load_traj='True',
             thresh_weights=0.,T0=17,T1=20):
     
+    path2load_traj = r'C:\Users\Facundo\Desktop\Facu\Doctorado\PythonCodes\2D-CANN\Miao\Miao-files' 
+    
     env = os.environ.copy()
     cmd = [
         sys.executable,
         "simulation.py",
         f"--path2save={path2save}",
+        F"--path2load_traj={path2load_traj}",
         f"--l_asym={l_asym}",
         f"--l_torus={l_torus}",
         f"--inclination_angle={inclination_angle}",
@@ -69,20 +72,23 @@ def run_job(path2save, l_asym, l_torus, inclination_angle,
 if __name__ == "__main__":
     set_start_method("spawn")
 
-    num = 0
-    load_traj = 'True'        
+    num = 3
+    load_traj= 'True'        
     l_torus = 30
-    l_asym = 6
+    l_asym = 7
     inclination_angs = [0, jnp.pi/6, jnp.pi/3, 0]
+    # inclination_angs = [0, jnp.pi/3]
 
     L = 50
 
-    path2save0 = os.path.split(os.getcwd())[0]    
-    path2save0 = os.path.join(path2save0, f'Simulation-spatial-num{num}')
+    path2save0 = os.getcwd()#os.path.split(os.getcwd())[0]    
+    path2save0 = os.path.join(path2save0,'data', f'Simulation-spatial-num{num}')
     
     if not os.path.exists(path2save0):
         os.mkdir(path2save0)
     print(path2save0)
+    
+    seeds = [7,9,8,10]
     
     for i_incl, incl_ang in tqdm(enumerate(inclination_angs)):
             
@@ -100,5 +106,10 @@ if __name__ == "__main__":
                 l_asym = l_asym,
                 l_torus = l_torus, 
                 inclination_angle = incl_ang,
-                seed = i_incl + 7)                          
+                seed = seeds[i_incl],
+                dt = 0.003,
+                gain=2,
+                T0 = 20,#10,#20, 
+                T1 = 15,#12,#0,
+                A_mod = 3)#20)#17)                          
                             

@@ -25,9 +25,9 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 1. CONFIGURATION
     # =========================================================================
-    num = 0
+    num = 3
     SMOOTH = True
-    NEURON_IDX = 34
+    NEURON_IDX = 45#34
     fact = 1.67
     nfr = 50
     sd = 3
@@ -39,7 +39,6 @@ if __name__ == "__main__":
     
     path2save = os.path.join(path2load,'Figures')
     
-    angles = ['0°', r'30°', r'60°', "0°'"]
     
     path2load_0 = os.path.join(path2load, f'incl_ang{1}')
     
@@ -50,6 +49,14 @@ if __name__ == "__main__":
     hd_modules = parameters_complete['hd_modules']
     dt = parameters_complete['dt']
     
+    if not os.path.exists(os.path.join(path2load,'Figures')):
+        os.mkdir(os.path.join(path2load,'Figures'))
+    
+    if len(os.listdir(path2load)) == 3:
+        angles = ['0°', r'30°']
+    else:
+        angles = ['0°', r'30°', r'60°', "0°'"]
+    # angles = ['0°', r'60°']
     #%% =========================================================================
     # 2. DATA LOADING & PREPARATION
     # =========================================================================
@@ -102,12 +109,19 @@ if __name__ == "__main__":
 
     print("Generating standard plots...")
     
-    bound_x0, bound_x1 = 22, 50
-    bound_y0, bound_y1 = 0, 27
+    # bound_x0, bound_x1 = 18, 45
+    # bound_y0, bound_y1 =-10, 22
+    # bound_x0, bound_x1 = -10, 20
+    # bound_y0, bound_y1 =5, 30
+    bound_x0, bound_x1 = 25, 60
+    bound_y0, bound_y1 =5, 30
+    
+    # bound_x0, bound_x1 = 14, 40
+    # bound_y0, bound_y1 = 27, 60
 
     row1_axes = []
     
-    fig = plt.figure(2, figsize=(16, 12))
+    fig = plt.figure(2, figsize=(20, 12))
     
     for i in range(len(angles)):
         if i > 0:
@@ -129,7 +143,7 @@ if __name__ == "__main__":
         if len(omni_maps[i]['spiking maps']['time_idx']) == 0:
             print('No Omni maps!')
         else:
-            plt.figure(2, figsize=(16, 12))
+            plt.figure(2)#, figsize=(16, 12))
             
             # Overlay Map
             ax = plt.subplot(3, 5, i+1)
@@ -171,7 +185,7 @@ if __name__ == "__main__":
     
     # Select the first subplot (index 0) and the fourth subplot (index 3)
     ax_start = row1_axes[0]
-    ax_end = row1_axes[3] 
+    ax_end = row1_axes[-1] 
     
     # Create the line bridging ax_start to ax_end
     con = ConnectionPatch(xyA=(0, yred_cm), xyB=(50, yred_cm),
@@ -184,10 +198,10 @@ if __name__ == "__main__":
     fig.add_artist(con)      
 
     plt.figure(1)
-    plt.savefig(os.path.join(path2load,'Figures/CrossCorrelograms_zoom.svg'),format='svg')
+    plt.savefig(os.path.join(path2load,'Figures','CrossCorrelograms_zoom.svg'),format='svg')
 
     plt.figure(2)
-    plt.savefig(os.path.join(path2load,'Figures/SpatialMaps.svg'),format='svg')
+    plt.savefig(os.path.join(path2load,'Figures','SpatialMaps.svg'),format='svg')
 
     plt.show()
 
@@ -226,7 +240,7 @@ if __name__ == "__main__":
     plt.tight_layout()
     
     plt.figure(5)
-    plt.savefig(os.path.join(path2load,'Figures/Shifts_Y.svg'),format='svg')
+    plt.savefig(os.path.join(path2load,'Figures','Shifts_Y.svg'),format='svg')
 
     #%% =========================================================================
     # 6. DIRECTIONAL ANALYSIS & DATAFRAME CREATION
@@ -264,14 +278,14 @@ if __name__ == "__main__":
             
             for j, (sx, sy) in enumerate(zip(s_up[:, 0] * L / nfr, s_up[:, 1] * L / nfr)):
                 data_shifts.append({'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 
-                                    'Direction': r'Up [0, pi)', 'Type': cell_name})
+                                    'Direction': r'Up', 'Type': cell_name})
             
             # --- DOWN Trajectory Analysis ---
             s_down, _ = compute_cross_corrs(maps_down[0][subset_idx], maps_down[i][subset_idx], smooth=SMOOTH, sd=sd)
                           
             for j, (sx, sy) in enumerate(zip(s_down[:, 0] * L / nfr, s_down[:, 1] * L / nfr)):
                 data_shifts.append({'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 
-                                    'Direction': r'Down [pi, 2 pi)', 'Type': cell_name})
+                                    'Direction': r'Down', 'Type': cell_name})
 
     df_shifts = pd.DataFrame(data_shifts)
 
@@ -321,28 +335,29 @@ def sample_pair_correlations(list_a, list_b, n_pairs=350, seed=0):
 # DIRECTIONAL COMPARISONS
 plt.figure(7,figsize=(10,5))
 plt.subplot(1, 2, 1)
+idx2plot = min([len(angles),3])-1
 
 data1 = df_shifts[(df_shifts['Type'] == cell_name) & 
-                  (df_shifts['Session'] == angles[1]) & 
-                  (df_shifts['Direction'] == 'Up [0, pi)')]['Shift Y'] 
+                  (df_shifts['Session'] == angles[idx2plot]) & 
+                  (df_shifts['Direction'] == 'Up')]['Shift Y'] 
                   
 data2 = df_shifts[(df_shifts['Type'] == cell_name) & 
-                  (df_shifts['Session'] == angles[1]) & 
-                  (df_shifts['Direction'] == 'Down [pi, 2 pi)')]['Shift Y']
+                  (df_shifts['Session'] == angles[idx2plot]) & 
+                  (df_shifts['Direction'] == 'Down')]['Shift Y']
                   
 plt.boxplot([data1, data2])
 plt.axhline(0, color='k', linestyle='--')
 
 W_shift, P_shift = wilcoxon(data1, data2)
-plt.title(f'Shift Y (Session 60°)\n Wilcoxon p={P_shift:.2e}')
-plt.xticks([1, 2], labels=['Up [0, pi)', 'Down [pi, 2 pi)'])
+plt.title(f'Shift Y (Session {angles[idx2plot]})\n Wilcoxon p={P_shift:.2e}')
+plt.xticks([1, 2], labels=['Up', 'Down'])
 
 # CORRELATION ANALYSIS
 # Generate distributions
 _, acg_0_deg = compute_cross_corrs(
-    omni_maps[3]['rate maps'], omni_maps[3]['rate maps'], smooth=SMOOTH, sd=sd)
+    omni_maps[0]['rate maps'], omni_maps[0]['rate maps'], smooth=SMOOTH, sd=sd)
 _, acg_60_deg = compute_cross_corrs(
-    omni_maps[2]['rate maps'], omni_maps[2]['rate maps'], smooth=SMOOTH, sd=sd)
+    omni_maps[idx2plot]['rate maps'], omni_maps[idx2plot]['rate maps'], smooth=SMOOTH, sd=sd)
 
 dist_0_0 = sample_pair_correlations(acg_0_deg, acg_0_deg, n_pairs=350)
 dist_60_60 = sample_pair_correlations(acg_60_deg, acg_60_deg, n_pairs=350)
@@ -361,7 +376,7 @@ plt.yticks([0.6,0.7,0.8,0.9,1.])
 plt.ylabel('Pearson Correlation (r)')
 plt.title(f"Population Analysis \n Kruskal-Wallis test: H = {h_stat:.2f}, p = {p_val:.2f}")
 
-plt.savefig(os.path.join(path2load,'Figures/UP_DOWN-Correlation.svg'),format='svg')
+plt.savefig(os.path.join(path2load,'Figures','UP_DOWN-Correlation.svg'),format='svg')
 
 plt.show()
     #%% =========================================================================
