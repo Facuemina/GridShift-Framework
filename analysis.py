@@ -25,9 +25,9 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 1. CONFIGURATION
     # =========================================================================
-    num = 111#112
+    num = 200
     SMOOTH = True
-    NEURON_IDX = 23#1
+    NEURON_IDX = 1#23#1
     fact = 1.67
     nfr = 50
     sd = 3
@@ -123,7 +123,7 @@ if __name__ == "__main__":
         bound_y0, bound_y1 = 21, 45
     elif NEURON_IDX == 1:
         bound_y0, bound_y1 = 15, 40    
-        bound_x0, bound_x1 = 14, 34
+        bound_x0, bound_x1 = 11, 34
         
     row1_axes = []
     
