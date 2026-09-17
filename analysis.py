@@ -25,9 +25,9 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 1. CONFIGURATION
     # =========================================================================
-    num = 1100
+    num = 1000
     SMOOTH = True
-    NEURON_IDX = 1#23#1
+    NEURON_IDX = 1
     fact = 1.67
     nfr = 50
     sd = 3
@@ -109,26 +109,8 @@ if __name__ == "__main__":
 
     print("Generating standard plots...")
     
-    # bound_x0, bound_x1 = 18, 45
-    # bound_y0, bound_y1 =-10, 22
-    # bound_x0, bound_x1 = -10, 20
-    # bound_y0, bound_y1 =5, 30
-    # bound_x0, bound_x1 = 25, 60
-    # bound_y0, bound_y1 =1, 30
-    
-    # bound_x0, bound_x1 = 14, 34#0
-    # bound_y0, bound_y1 = 27, 60
-    if NEURON_IDX == 23:
-        # bound_x0, bound_x1 = 20, 48
-        # bound_y0, bound_y1 = 21, 45
-        bound_x0, bound_x1 = -10, 22
-        bound_y0, bound_y1 = 19, 48
-    elif NEURON_IDX == 1:
-        bound_y0, bound_y1 = 15, 40    
-        bound_x0, bound_x1 = 9, 34
-    elif NEURON_IDX == 44:
-        bound_y0, bound_y1 = 26.2, 60    
-        bound_x0, bound_x1 = 0, 30
+    bound_y0, bound_y1 = 15, 40    
+    bound_x0, bound_x1 = 9, 34
         
     row1_axes = []
     
@@ -234,6 +216,7 @@ if __name__ == "__main__":
         plt.title(f'Omni X Shift (U p-val={P:.2e})')
     plt.xlim([-.5, len(shifts_x) - .5])
     plt.xticks(range(len(angles)-1), labels=angles[1:])
+    plt.ylim([-6.5,6.5])
     
     plt.subplot(1, 2, 2)
     sns.boxplot(data=shifts_y, fill=False)
@@ -246,6 +229,7 @@ if __name__ == "__main__":
        plt.title(f'Omni Y Shift (U p-val={P:.2e})')
     plt.xlim([-.5, len(shifts_y)-.5])
     plt.xticks(range(len(angles)-1), labels=angles[1:])
+    plt.ylim([-6.5,6.5])
     
        
     plt.tight_layout()
@@ -307,11 +291,7 @@ def get_spatial_correlation(acg1, acg2):
     """Computes the Pearson correlation between two 2D autocorrelograms."""
     # Mask out NaNs (e.g., circular borders in grid cell autocorrelograms)
     valid = ~np.isnan(acg1) & ~np.isnan(acg2)
-    
-    # If the overlap is too small, return NaN to avoid spurious correlations
-    if np.sum(valid) < 10: 
-        return np.nan
-        
+           
     r, _ = pearsonr(acg1[valid], acg2[valid])
     return r
 

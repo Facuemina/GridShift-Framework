@@ -82,17 +82,13 @@ if __name__ == "__main__":
 
     L = 50
 
-    path2save0 = os.getcwd()#os.path.split(os.getcwd())[0]    
+    path2save0 = os.getcwd()
     path2save0 = os.path.join(path2save0,'data', f'Simulation-spatial-num{num}')
     
     if not os.path.exists(path2save0):
         os.mkdir(path2save0)
     print(path2save0)
     
-    if len(inclination_angs) == 2:
-        seeds = [7,9,8,10]
-    else:
-        seeds = [7,8,9,10]
         
     for i_incl, incl_ang in tqdm(enumerate(inclination_angs)):
             
@@ -113,10 +109,7 @@ if __name__ == "__main__":
                 seed = seeds[i_incl]+3+8,
                 dt = 0.003,
                 gain=1, 
-                T0 = 11,#10,#20, 
-                T1 = 13,#12,#0,
-                A_mod = 7.1)#20)#17)       
-                # T0 = 13,#10,#20, 
-                # T1 = 3,#12,#0,
-                # A_mod = 4.7)#20)#17)                          
+                T0 = 11, 
+                T1 = 13,
+                A_mod = 7.1)                        
                             
