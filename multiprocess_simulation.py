@@ -72,7 +72,7 @@ def run_job(path2save, l_asym, l_torus, inclination_angle,
 if __name__ == "__main__":
     set_start_method("spawn")
 
-    num = 200
+    num = 1100
     #112 VA
     load_traj= 'True'        
     l_torus = 30
@@ -110,12 +110,12 @@ if __name__ == "__main__":
                 l_asym = l_asym,
                 l_torus = l_torus, 
                 inclination_angle = incl_ang,
-                seed = seeds[i_incl],
+                seed = seeds[i_incl]+3+8,
                 dt = 0.003,
                 gain=1, 
-                T0 = 15,#10,#20, 
-                T1 = 5,#12,#0,
-                A_mod = 4.2)#20)#17)       
+                T0 = 11,#10,#20, 
+                T1 = 13,#12,#0,
+                A_mod = 7.1)#20)#17)       
                 # T0 = 13,#10,#20, 
                 # T1 = 3,#12,#0,
                 # A_mod = 4.7)#20)#17)                          
