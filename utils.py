@@ -168,42 +168,6 @@ def generate_uniform_toroidal_phase_distribution(nx, ny, l):
         y = y.at[iy*nx:(iy+1)*nx].set(iy/ny*l*jnp.sin(jnp.pi/3))
     return x, y
 
-def compute_rate_maps_from_sparse_utils(sparse_spikes, traj, selected_neurons, L, dt, nx=30, ny=30):
-    x_pos = traj[:, 0]
-    y_pos = traj[:, 1]
-    
-    x_idx = np.clip(np.floor((x_pos / L) * nx).astype(int), 0, nx - 1)
-    y_idx = np.clip(np.floor((y_pos / L) * ny).astype(int), 0, ny - 1)
-    spatial_idx = y_idx * nx + x_idx 
-
-    occupancy_1d = np.bincount(spatial_idx, minlength=nx * ny) * dt
-    safe_occupancy = np.where(occupancy_1d > 0, occupancy_1d, 1.0)
-    
-    selected_neurons = np.asarray(selected_neurons)
-    mask = np.isin(sparse_spikes['neuron_idx'], selected_neurons)
-    
-    filt_time_idx = sparse_spikes['time_idx'][mask]
-    filt_neuron_idx = sparse_spikes['neuron_idx'][mask]
-    filt_counts = sparse_spikes['counts'][mask]
-    
-    spike_spatial_idx = spatial_idx[filt_time_idx]
-    
-    num_selected = len(selected_neurons)
-    rate_maps = np.zeros((num_selected, ny, nx))
-    
-    for i, neuron_id in enumerate(selected_neurons):
-        n_mask = (filt_neuron_idx == neuron_id)
-        n_spatial_idx = spike_spatial_idx[n_mask]
-        n_counts = filt_counts[n_mask]
-        
-        spike_map_1d = np.bincount(n_spatial_idx, weights=n_counts, minlength=nx * ny)
-        rate_map_2d = (spike_map_1d / safe_occupancy).reshape(ny, nx)
-        rate_map_2d[occupancy_1d.reshape(ny, nx) == 0] = 0 
-        
-        rate_maps[i] = rate_map_2d
-        
-    return rate_maps
-
 def find_spatial_shift_subpixel(corr_map, n=3, search_radius_pixels=None):
     if n < 3 or n % 2 == 0:
         raise ValueError(f"n must be an odd integer >= 3, but got {n}")

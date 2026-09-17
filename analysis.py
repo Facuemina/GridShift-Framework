@@ -25,7 +25,7 @@ if __name__ == "__main__":
     #%% =========================================================================
     # 1. CONFIGURATION
     # =========================================================================
-    num = 1000
+    num = 1
     SMOOTH = True
     NEURON_IDX = 1
     fact = 1.67
@@ -56,7 +56,7 @@ if __name__ == "__main__":
         angles = ['0°', r'60°']
     else:
         angles = ['0°', r'30°', r'60°', "0°'"]
-    # angles = ['0°', r'60°']
+        
     #%% =========================================================================
     # 2. DATA LOADING & PREPARATION
     # =========================================================================
@@ -88,8 +88,7 @@ if __name__ == "__main__":
         
         idx = np.where(np.isnan(CC.mean(axis=2).mean(axis=1)))[0]
         idx_discard = np.concat((idx_discard,idx))
-        
-        
+                
         if i>0:
             shifts_x.append(shifts_omni[:,0])
             shifts_y.append(shifts_omni[:,1])
@@ -136,8 +135,7 @@ if __name__ == "__main__":
         if len(omni_maps[i]['spiking maps']['time_idx']) == 0:
             print('No Omni maps!')
         else:
-            plt.figure(2)#, figsize=(16, 12))
-            
+            plt.figure(2)            
             # Overlay Map
             ax = plt.subplot(3, 5, i+1)
             row1_axes.append(ax) # Save the axis reference for later

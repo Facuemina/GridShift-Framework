@@ -72,13 +72,12 @@ def run_job(path2save, l_asym, l_torus, inclination_angle,
 if __name__ == "__main__":
     set_start_method("spawn")
 
-    num = 1100
-    #112 VA
+    num = 1
     load_traj= 'True'        
     l_torus = 30
     l_asym = 6.5
-    inclination_angs = [0, jnp.pi/6, jnp.pi/3, 0]
-    # inclination_angs = [0, jnp.pi/3]
+    # inclination_angs = [0, jnp.pi/6, jnp.pi/3, 0]
+    inclination_angs = [0, jnp.pi/3]
 
     L = 50
 
@@ -106,7 +105,7 @@ if __name__ == "__main__":
                 l_asym = l_asym,
                 l_torus = l_torus, 
                 inclination_angle = incl_ang,
-                seed = seeds[i_incl]+3+8,
+                seed = i_incl,
                 dt = 0.003,
                 gain=1, 
                 T0 = 11, 
