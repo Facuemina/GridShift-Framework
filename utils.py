@@ -19,6 +19,11 @@ from numbers import Number
 from scipy.ndimage import gaussian_filter
 from scipy.signal import correlate2d
 from tqdm import tqdm
+from scipy.ndimage import rotate
+from scipy.stats import pearsonr
+
+# from skimage.feature import peak_local_max
+
 
 def generate2D_pos(steps, Lx, Ly, v, sigma_theta, delta_t, periodic=False, seed=0):
     two_pi = 2 * jnp.pi
@@ -379,3 +384,134 @@ def compute_directional_rate_maps(spiking_maps, traj, is_cond, num_neurons, L, d
         maps[neuron_id] = rm
         
     return maps
+
+from scipy.ndimage import maximum_filter
+
+def find_2d_peaks(autocorrelogram, min_distance=3):
+    # 1. Define the neighborhood size based on your min_distance
+    # A min_distance of 3 roughly translates to a 7x7 window (2*3 + 1)
+    neighborhood_size = 2 * min_distance + 1
+    
+    # 2. Apply a maximum filter
+    local_max = maximum_filter(autocorrelogram, size=neighborhood_size)
+    
+    # 3. Find where the original array equals the local maximum
+    # (These are your peaks)
+    peak_mask = (autocorrelogram == local_max)
+    
+    # 4. Get the coordinates of these peaks
+    peaks = np.argwhere(peak_mask)
+    
+    return peaks
+
+def compute_grid_metrics(autocorrelogram, bin_size=1.0):
+    """
+    Computes grid score and grid spacing from a 2D spatial autocorrelogram.
+    
+    Parameters:
+    - autocorrelogram (2D numpy array): The spatial autocorrelogram of the firing rate map.
+    - bin_size (float): The spatial size of each bin (e.g., in cm) to scale the spacing output.
+    
+    Returns:
+    - grid_score (float): Mean correlation at (60, 120) minus mean at (30, 90, 150).
+    - grid_spacing (float): Mean distance to the 6 nearest peaks (scaled by bin_size).
+    """
+    
+    # 1. Find all local peaks in the autocorrelogram
+    # min_distance prevents detecting multiple pixels on the same broad peak
+    peaks = find_2d_peaks(autocorrelogram, min_distance=3)
+    
+    # The central peak is the absolute maximum of an autocorrelogram
+    center_y, center_x = np.unravel_index(np.argmax(autocorrelogram), autocorrelogram.shape)
+    center_coord = np.array([center_y, center_x])
+    
+    # 2. Calculate distances from the central peak to all other peaks
+    distances = np.linalg.norm(peaks - center_coord, axis=1)
+    
+    # Sort peaks by distance
+    sorted_indices = np.argsort(distances)
+    
+    # Ensure we have enough peaks to measure (1 center + 6 surrounding = 7 minimum)
+    if len(peaks) < 7:
+        raise ValueError("Not enough peaks detected to compute grid metrics.")
+        
+    # The closest peak is the center itself (distance = 0)
+    # The next 6 closest are the inner vertices of the grid
+    nearest_6_distances = distances[sorted_indices[1:7]]
+    
+    # 3. Compute Grid Spacing
+    grid_spacing = np.mean(nearest_6_distances) * bin_size
+    
+    # 4. Prepare for Grid Score computation
+    # Create a circular mask to isolate the central grid structure for correlation.
+    # We mask up to slightly beyond the 6 inner peaks (1.5x is a standard heuristic).
+    outer_radius = np.max(nearest_6_distances) * 1.5
+    Y, X = np.ogrid[:autocorrelogram.shape[0], :autocorrelogram.shape[1]]
+    dist_from_center = np.sqrt((X - center_x)**2 + (Y - center_y)**2)
+    
+    # Optional but standard: exclude the central peak itself so it doesn't dominate the correlation
+    inner_radius = np.min(nearest_6_distances) * 0.4
+    mask = (dist_from_center <= outer_radius) & (dist_from_center >= inner_radius)
+    
+    def get_rotated_correlation(angle):
+        # Rotate the autocorrelogram
+        rotated_auto = rotate(autocorrelogram, angle, reshape=False, order=1)
+        
+        # Extract the masked pixels for both original and rotated arrays
+        orig_pixels = autocorrelogram[mask]
+        rot_pixels = rotated_auto[mask]
+        
+        # Calculate Pearson correlation
+        corr, _ = pearsonr(orig_pixels, rot_pixels)
+        return corr
+    
+    # 5. Compute Grid Score
+    corr_30 = get_rotated_correlation(30)
+    corr_60 = get_rotated_correlation(60)
+    corr_90 = get_rotated_correlation(90)
+    corr_120 = get_rotated_correlation(120)
+    corr_150 = get_rotated_correlation(150)
+    
+    mean_60_120 = np.mean([corr_60, corr_120])
+    mean_30_90_150 = np.mean([corr_30, corr_90, corr_150])
+    
+    grid_score = mean_60_120 - mean_30_90_150
+    
+    return grid_score, grid_spacing
+
+def get_spatial_correlation(acg1, acg2):
+    """Computes the Pearson correlation between two 2D autocorrelograms."""
+    # Mask out NaNs (e.g., circular borders in grid cell autocorrelograms)
+    valid = ~np.isnan(acg1) & ~np.isnan(acg2)
+            
+    r, _ = pearsonr(acg1[valid], acg2[valid])
+    return r
+
+def sample_pair_correlations(list_a, list_b, n_pairs=350, seed=0):
+    """Randomly samples unique cell pairs and computes their correlation."""
+    rng = np.random.default_rng(seed)
+    
+    # 1. Generate all possible unique pair indices
+    if list_a is list_b:
+        # Within-session: extract upper triangle indices (no self-pairs, no duplicates)
+        idx_pairs = np.array(np.triu_indices(len(list_a), k=1)).T
+    else:
+        # Cross-session: cartesian product of all indices
+        idx_pairs = np.array(np.meshgrid(np.arange(len(list_a)), 
+                                         np.arange(len(list_b)))).T.reshape(-1, 2)
+        
+    # 2. Sample N pairs without replacement
+    max_possible_pairs = len(idx_pairs)
+    sample_size = min(n_pairs, max_possible_pairs)
+    sampled_indices = rng.choice(idx_pairs, size=sample_size, replace=False)
+    
+    # 3. Compute correlations
+    correlations = []
+    valid_indices = [] 
+    for i, j in sampled_indices:
+        r = get_spatial_correlation(list_a[i], list_b[j])
+        if not np.isnan(r):
+            correlations.append(r)
+            valid_indices.append([i, j])
+            
+    return np.array(correlations), np.array(valid_indices)

@@ -18,14 +18,16 @@ from utils import (
     load_and_compute_maps_from_sparse,
     compute_cross_corrs,
     compute_directional_rate_maps,
-    find_spatial_shift_subpixel
+    find_spatial_shift_subpixel,
+    compute_grid_metrics,
+    sample_pair_correlations
 )
 #%%
 if __name__ == "__main__":
     #%% =========================================================================
     # 1. CONFIGURATION
     # =========================================================================
-    num = 1
+    num = 0
     SMOOTH = True
     NEURON_IDX = 1
     fact = 1.67
@@ -33,7 +35,7 @@ if __name__ == "__main__":
     sd = 3
     i_0 = 36
     i_f = 63
-       
+        
     path2load = os.getcwd()  
     path2load = os.path.join(path2load, 'data', f'Simulation-spatial-num{num}')
     
@@ -56,7 +58,7 @@ if __name__ == "__main__":
         angles = ['0°', r'60°']
     else:
         angles = ['0°', r'30°', r'60°', "0°'"]
-        
+    # angles = ['0°', r'60°']
     #%% =========================================================================
     # 2. DATA LOADING & PREPARATION
     # =========================================================================
@@ -88,7 +90,8 @@ if __name__ == "__main__":
         
         idx = np.where(np.isnan(CC.mean(axis=2).mean(axis=1)))[0]
         idx_discard = np.concat((idx_discard,idx))
-                
+        
+        
         if i>0:
             shifts_x.append(shifts_omni[:,0])
             shifts_y.append(shifts_omni[:,1])
@@ -135,7 +138,8 @@ if __name__ == "__main__":
         if len(omni_maps[i]['spiking maps']['time_idx']) == 0:
             print('No Omni maps!')
         else:
-            plt.figure(2)            
+            plt.figure(2)#, figsize=(16, 12))
+            
             # Overlay Map
             ax = plt.subplot(3, 5, i+1)
             row1_axes.append(ax) # Save the axis reference for later
@@ -229,7 +233,7 @@ if __name__ == "__main__":
     plt.xticks(range(len(angles)-1), labels=angles[1:])
     plt.ylim([-6.5,6.5])
     
-       
+        
     plt.tight_layout()
     
     plt.figure(5)
@@ -263,158 +267,269 @@ if __name__ == "__main__":
         
     ]
     
-    for i, ses_label in enumerate(session_labels, start=1):
+    for i, ses_label in enumerate(angles): # <--- NOW LOOPING OVER ALL ANGLES
         for cell_name, maps_up, maps_down, subset_idx in cell_groups:
             
             # --- UP Trajectory Analysis ---
-            s_up, _ = compute_cross_corrs(maps_up[0][subset_idx], maps_up[i][subset_idx], smooth=SMOOTH, sd=sd)
+            _, AC_up = compute_cross_corrs(maps_up[i][subset_idx], maps_up[i][subset_idx], smooth=SMOOTH, sd=sd)
             
-            for j, (sx, sy) in enumerate(zip(s_up[:, 0] * L / nfr, s_up[:, 1] * L / nfr)):
-                data_shifts.append({'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 
+            if i == 0:
+                # Session 0: No shift, assign NaNs
+                s_up_x = [np.nan] * len(subset_idx)
+                s_up_y = [np.nan] * len(subset_idx)
+            else:
+                # Session > 0: Compute spatial shift relative to baseline
+                s_up, _ = compute_cross_corrs(maps_up[0][subset_idx], maps_up[i][subset_idx], smooth=SMOOTH, sd=sd)
+                s_up_x = s_up[:, 0] * L / nfr
+                s_up_y = s_up[:, 1] * L / nfr
+            
+            for j, (sx, sy) in enumerate(zip(s_up_x, s_up_y)):
+                score, spacing = compute_grid_metrics(AC_up[j], bin_size=L/nfr) 
+                
+                data_shifts.append({'Cell Index': idx_analyze[j], 
+                                    'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 
+                                    'Grid Score': score, 'Grid Spacing': spacing, 
                                     'Direction': r'Up', 'Type': cell_name})
             
             # --- DOWN Trajectory Analysis ---
-            s_down, _ = compute_cross_corrs(maps_down[0][subset_idx], maps_down[i][subset_idx], smooth=SMOOTH, sd=sd)
+            _, AC_down = compute_cross_corrs(maps_down[i][subset_idx], maps_down[i][subset_idx], smooth=SMOOTH, sd=sd)
+            
+            if i == 0:
+                s_down_x = [np.nan] * len(subset_idx)
+                s_down_y = [np.nan] * len(subset_idx)
+            else:
+                s_down, _ = compute_cross_corrs(maps_down[0][subset_idx], maps_down[i][subset_idx], smooth=SMOOTH, sd=sd)
+                s_down_x = s_down[:, 0] * L / nfr
+                s_down_y = s_down[:, 1] * L / nfr
                           
-            for j, (sx, sy) in enumerate(zip(s_down[:, 0] * L / nfr, s_down[:, 1] * L / nfr)):
-                data_shifts.append({'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 
+            for j, (sx, sy) in enumerate(zip(s_down_x, s_down_y)):
+                score, spacing = compute_grid_metrics(AC_down[j], bin_size=L/nfr) 
+                
+                data_shifts.append({'Cell Index': idx_analyze[j], 
+                                    'Session': ses_label, 'Shift X': sx, 'Shift Y': sy, 
+                                    'Grid Score': score, 'Grid Spacing': spacing, 
                                     'Direction': r'Down', 'Type': cell_name})
 
     df_shifts = pd.DataFrame(data_shifts)
-
 #%%
-from scipy.stats import kruskal, pearsonr
-
-def get_spatial_correlation(acg1, acg2):
-    """Computes the Pearson correlation between two 2D autocorrelograms."""
-    # Mask out NaNs (e.g., circular borders in grid cell autocorrelograms)
-    valid = ~np.isnan(acg1) & ~np.isnan(acg2)
-           
-    r, _ = pearsonr(acg1[valid], acg2[valid])
-    return r
-
-def sample_pair_correlations(list_a, list_b, n_pairs=350, seed=0):
-    """Randomly samples unique cell pairs and computes their correlation."""
-    rng = np.random.default_rng(seed)
-    
-    # 1. Generate all possible unique pair indices
-    if list_a is list_b:
-        # Within-session: extract upper triangle indices (no self-pairs, no duplicates)
-        idx_pairs = np.array(np.triu_indices(len(list_a), k=1)).T
-    else:
-        # Cross-session: cartesian product of all indices
-        idx_pairs = np.array(np.meshgrid(np.arange(len(list_a)), 
-                                         np.arange(len(list_b)))).T.reshape(-1, 2)
-        
-    # 2. Sample N pairs without replacement
-    max_possible_pairs = len(idx_pairs)
-    sample_size = min(n_pairs, max_possible_pairs)
-    sampled_indices = rng.choice(idx_pairs, size=sample_size, replace=False)
-    
-    # 3. Compute correlations
-    correlations = []
-    for i, j in sampled_indices:
-        r = get_spatial_correlation(list_a[i], list_b[j])
-        if not np.isnan(r):
-            correlations.append(r)
-            
-    return np.array(correlations)
+    from scipy.stats import kruskal
 
 
-# DIRECTIONAL COMPARISONS
-plt.figure(7,figsize=(10,5))
-plt.subplot(1, 2, 1)
-idx2plot = min([len(angles),3])-1
+    # DIRECTIONAL COMPARISONS
+    plt.figure(7,figsize=(10,5))
+    plt.subplot(1, 2, 1)
+    idx2plot = min([len(angles),3])-1
 
-data1 = df_shifts[(df_shifts['Type'] == cell_name) & 
-                  (df_shifts['Session'] == angles[idx2plot]) & 
-                  (df_shifts['Direction'] == 'Up')]['Shift Y'] 
-                  
-data2 = df_shifts[(df_shifts['Type'] == cell_name) & 
-                  (df_shifts['Session'] == angles[idx2plot]) & 
-                  (df_shifts['Direction'] == 'Down')]['Shift Y']
-                  
-plt.boxplot([data1, data2])
-plt.axhline(0, color='k', linestyle='--')
+    data1 = df_shifts[(df_shifts['Type'] == cell_name) & 
+                      (df_shifts['Session'] == angles[idx2plot]) & 
+                      (df_shifts['Direction'] == 'Up')]['Shift Y'] 
+                      
+    data2 = df_shifts[(df_shifts['Type'] == cell_name) & 
+                      (df_shifts['Session'] == angles[idx2plot]) & 
+                      (df_shifts['Direction'] == 'Down')]['Shift Y']
+                      
+    plt.boxplot([data1, data2])
+    plt.axhline(0, color='k', linestyle='--')
 
-W_shift, P_shift = wilcoxon(data1, data2)
-plt.title(f'Shift Y (Session {angles[idx2plot]})\n Wilcoxon p={P_shift:.2e}')
-plt.xticks([1, 2], labels=['Up', 'Down'])
+    W_shift, P_shift = wilcoxon(data1, data2)
+    plt.title(f'Shift Y (Session {angles[idx2plot]})\n Wilcoxon p={P_shift:.2e}')
+    plt.xticks([1, 2], labels=['Up', 'Down'])
 
-# CORRELATION ANALYSIS
-# Generate distributions
-_, acg_0_deg = compute_cross_corrs(
-    omni_maps[0]['rate maps'], omni_maps[0]['rate maps'], smooth=SMOOTH, sd=sd)
-_, acg_60_deg = compute_cross_corrs(
-    omni_maps[idx2plot]['rate maps'], omni_maps[idx2plot]['rate maps'], smooth=SMOOTH, sd=sd)
+    # CORRELATION ANALYSIS
+    # Generate distributions
+    _, acg_0_deg = compute_cross_corrs(
+        omni_maps[0]['rate maps'], omni_maps[0]['rate maps'], smooth=SMOOTH, sd=sd)
+    _, acg_60_deg = compute_cross_corrs(
+        omni_maps[idx2plot]['rate maps'], omni_maps[idx2plot]['rate maps'], smooth=SMOOTH, sd=sd)
 
-dist_0_0 = sample_pair_correlations(acg_0_deg, acg_0_deg, n_pairs=350)
-dist_60_60 = sample_pair_correlations(acg_60_deg, acg_60_deg, n_pairs=350)
-dist_0_60 = sample_pair_correlations(acg_0_deg, acg_60_deg, n_pairs=350)
+    dist_0_0, idx_00 = sample_pair_correlations(acg_0_deg, acg_0_deg, n_pairs=350)
+    dist_60_60, idx_6060 = sample_pair_correlations(acg_60_deg, acg_60_deg, n_pairs=350)
+    dist_0_60, idx_060 = sample_pair_correlations(acg_0_deg, acg_60_deg, n_pairs=350)
 
-# Kruskal-Wallis H-test
-h_stat, p_val = kruskal(dist_0_0, dist_60_60, dist_0_60)
-print(f"Kruskal-Wallis test: H = {h_stat:.2f}, p = {p_val:.2f}")
+    # Kruskal-Wallis H-test
+    h_stat, p_val = kruskal(dist_0_0, dist_60_60, dist_0_60)
+    print(f"Kruskal-Wallis test: H = {h_stat:.2f}, p = {p_val:.2f}")
 
 
-plt.subplot(1, 2, 2)
-# Visualization
-plt.boxplot([dist_0_0, dist_60_60, dist_0_60])
-plt.xticks([1,2,3],labels=['0° vs 0°', '60° vs 60°', '0° vs 60°'])
-plt.yticks([0.6,0.7,0.8,0.9,1.])
-plt.ylabel('Pearson Correlation (r)')
-plt.title(f"Population Analysis \n Kruskal-Wallis test: H = {h_stat:.2f}, p = {p_val:.2f}")
+    plt.subplot(1, 2, 2)
+    # Visualization
+    plt.boxplot([dist_0_0, dist_60_60, dist_0_60])
+    plt.xticks([1,2,3],labels=['0° vs 0°', '60° vs 60°', '0° vs 60°'])
+    plt.yticks([0.6,0.7,0.8,0.9,1.])
+    plt.ylabel('Pearson Correlation (r)')
+    plt.title(f"Population Analysis \n Kruskal-Wallis test: H = {h_stat:.2f}, p = {p_val:.2f}")
 
-plt.savefig(os.path.join(path2load,'Figures','UP_DOWN-Correlation.svg'),format='svg')
+    plt.savefig(os.path.join(path2load,'Figures','UP_DOWN-Correlation.svg'),format='svg')
 
-plt.show()
+    plt.show()
     #%% =========================================================================
     # 10. DATAFRAMES: Firing Rates and Friedman/Dunn Tests
     # =========================================================================
-import scikit_posthocs as sp
+    import scikit_posthocs as sp
 
-print("Generating Friedman Tests and Dunn Post-Hoc DataFrame...")
+    print("Generating Friedman Tests and Dunn Post-Hoc DataFrame...")
 
-# 1. Compute Friedman tests for all shift types
-friedman_results = []
+    # 1. Compute Friedman tests for all shift types
+    friedman_results = []
 
-shift_dict = {
-    'Omni_X': shifts_x,
-    'Omni_Y': shifts_y
-}
+    shift_dict = {
+        'Omni_X': shifts_x,
+        'Omni_Y': shifts_y
+    }
 
-for shift_name, shift_list in shift_dict.items():
-    # Friedman test requires at least 2 groups (i.e., > 2 angular sessions)
-    if len(shift_list) > 1: 
-        stat, p_val = friedmanchisquare(*shift_list)
-        friedman_results.append({
-            'Shift_Type': shift_name,
-            'Friedman_Stat': stat,
-            'p_value': p_val,
-            'Significant': p_val < 0.05
-        })
-    else:
-        friedman_results.append({
-            'Shift_Type': shift_name,
-            'Friedman_Stat': np.nan,
-            'p_value': np.nan,
-            'Significant': False
-        })
+    for shift_name, shift_list in shift_dict.items():
+        # Friedman test requires at least 2 groups (i.e., > 2 angular sessions)
+        if len(shift_list) > 1: 
+            stat, p_val_f = friedmanchisquare(*shift_list)
+            friedman_results.append({
+                'Shift_Type': shift_name,
+                'Friedman_Stat': stat,
+                'p_value': p_val_f,
+                'Significant': p_val_f < 0.05
+            })
+        else:
+            friedman_results.append({
+                'Shift_Type': shift_name,
+                'Friedman_Stat': np.nan,
+                'p_value': np.nan,
+                'Significant': False
+            })
+            
+    df_friedman = pd.DataFrame(friedman_results)
+
+    # 2. Compute Post hoc Dunn's test strictly for Omni Shift Y
+    if len(shifts_y) > 1:
+        # Run Dunn's test with Bonferroni correction
+        df_dunn_omni_y = sp.posthoc_dunn(shifts_y, p_adjust='bonferroni')
         
-df_friedman = pd.DataFrame(friedman_results)
+        # Format the matrix headers/indexes to match your session labels
+        session_labels = angles[1:]
+        df_dunn_omni_y.columns = session_labels
+        df_dunn_omni_y.index = session_labels
+        
+        print("\nOmni Y-Shift Dunn's Test Results:")
+        print(df_dunn_omni_y)
+    else:
+        df_dunn_omni_y = pd.DataFrame()
+        print("\nNot enough sessions to run a post hoc Dunn's test on Omni Y-shifts.")
 
-# 2. Compute Post hoc Dunn's test strictly for Omni Shift Y
-if len(shifts_y) > 1:
-    # Run Dunn's test with Bonferroni correction
-    df_dunn_omni_y = sp.posthoc_dunn(shifts_y, p_adjust='bonferroni')
+    #%% =========================================================================
+    # 11. DATA SAVING: Consolidate Output Data and Save to Disk
+    # =========================================================================
+    print("Structuring and Saving all spatial shifts, correlations, and statistics...")
+
+    # 1. Expand df_shifts to include 'Total' (Omni) directional shifts
+    omni_shifts_data = []
     
-    # Format the matrix headers/indexes to match your session labels
-    session_labels = angles[1:]
-    df_dunn_omni_y.columns = session_labels
-    df_dunn_omni_y.index = session_labels
+    # <--- NOW LOOPING OVER ALL ANGLES --->
+    for idx_ses, ses_label in enumerate(angles):
+        
+        # AC is computed for the current session (idx_ses)
+        _, AC_omni = compute_cross_corrs(omni_maps[idx_ses]['rate maps'][idx_analyze], 
+                                         omni_maps[idx_ses]['rate maps'][idx_analyze], smooth=SMOOTH, sd=sd) 
+        
+        if idx_ses == 0:
+            # Baseline session: shifts are NaN
+            sx_list = [np.nan] * len(idx_analyze)
+            sy_list = [np.nan] * len(idx_analyze)
+        else:
+            # Future sessions: shift_x and shift_y lists correspond to sessions beyond 0°
+            # So index `idx_ses - 1` maps correctly (e.g., idx_ses 1 pulls from index 0)
+            sx_list = shifts_x[idx_ses - 1]
+            sy_list = shifts_y[idx_ses - 1]
+            
+        for j, (sx, sy) in enumerate(zip(sx_list, sy_list)): 
+            
+            score, spacing = compute_grid_metrics(AC_omni[j], bin_size=L/nfr) 
+            
+            omni_shifts_data.append({
+                'Cell Index': idx_analyze[j], 
+                'Session': ses_label,
+                'Shift X': sx,
+                'Shift Y': sy,
+                'Grid Score': score,     
+                'Grid Spacing': spacing, 
+                'Direction': 'Total',
+                'Type': 'Omni'
+            })
+            
+    df_all_shifts = pd.concat([df_shifts, pd.DataFrame(omni_shifts_data)], ignore_index=True)
     
-    print("\nOmni Y-Shift Dunn's Test Results:")
-    print(df_dunn_omni_y)
-else:
-    df_dunn_omni_y = pd.DataFrame()
-    print("\nNot enough sessions to run a post hoc Dunn's test on Omni Y-shifts.")
+    # 2. Consolidate Pair Correlations with True Cell Indices
+    df_corr = pd.concat([
+        pd.DataFrame({
+            'Comparison': '0° vs 0°', 
+            'Pearson_r': dist_0_0,
+            'Cell_1': idx_analyze[idx_00[:, 0]],    # Maps index 'i' to true Cell ID
+            'Cell_2': idx_analyze[idx_00[:, 1]]     # Maps index 'j' to true Cell ID
+        }),
+        pd.DataFrame({
+            'Comparison': '60° vs 60°', 
+            'Pearson_r': dist_60_60,
+            'Cell_1': idx_analyze[idx_6060[:, 0]], 
+            'Cell_2': idx_analyze[idx_6060[:, 1]]
+        }),
+        pd.DataFrame({
+            'Comparison': '0° vs 60°', 
+            'Pearson_r': dist_0_60,
+            'Cell_1': idx_analyze[idx_060[:, 0]], 
+            'Cell_2': idx_analyze[idx_060[:, 1]]
+        })
+    ], ignore_index=True)
+
+    # 3. Consolidate scalar statistics into a single Summary DataFrame
+    stats_summary = [
+        {
+            'Test': 'Wilcoxon (Up vs Down Y-Shift)',
+            'Group/Session': angles[idx2plot],
+            'Statistic_Name': 'W',
+            'Statistic_Value': W_shift,
+            'p_value': P_shift
+        },
+        {
+            'Test': 'Kruskal-Wallis (Correlations)',
+            'Group/Session': '0° vs 0°, 60° vs 60°, 0° vs 60°',
+            'Statistic_Name': 'H',
+            'Statistic_Value': h_stat,
+            'p_value': p_val
+        }
+    ]
+    
+    # Append Friedman test results to the statistical summary
+    for _, row in df_friedman.iterrows():
+        stats_summary.append({
+            'Test': f"Friedman ({row['Shift_Type']})",
+            'Group/Session': 'All Sessions',
+            'Statistic_Name': 'Chi-Square',
+            'Statistic_Value': row['Friedman_Stat'],
+            'p_value': row['p_value']
+        })
+    df_stats_summary = pd.DataFrame(stats_summary)
+
+    # 4. Save data to Excel and Pickle for flexibility
+    excel_path = os.path.join(path2load, 'Figures', 'Consolidated_Results.xlsx')
+    pickle_path = os.path.join(path2load, 'Figures', 'Consolidated_Results.pkl')
+    
+    # Export to Excel with multiple organized sheets
+    try:
+        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            df_all_shifts.to_excel(writer, sheet_name='All_Shifts', index=False)
+            df_corr.to_excel(writer, sheet_name='Correlations', index=False)
+            df_stats_summary.to_excel(writer, sheet_name='Statistics_Summary', index=False)
+            if not df_dunn_omni_y.empty:
+                df_dunn_omni_y.to_excel(writer, sheet_name='Dunns_PostHoc_OmniY', index=True)
+        print(f"Tabular data effectively saved to Excel at: {excel_path}")
+    except ModuleNotFoundError:
+        print("Excel dependencies not met (install openpyxl/xlsxwriter). Falling back to Pickle only.")
+
+    # Export a comprehensive dictionary to Pickle
+    saved_data_dict = {
+        'all_shifts_df': df_all_shifts,
+        'correlations_df': df_corr,
+        'statistics_df': df_stats_summary,
+        'dunn_posthoc_df': df_dunn_omni_y
+    }
+    with open(pickle_path, 'wb') as f:
+        pickle.dump(saved_data_dict, f)
+        
+    print(f"Data objects correctly saved to Pickle at: {pickle_path}")
