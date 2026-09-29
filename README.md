@@ -32,7 +32,7 @@ The `data/` folder contains the simulation outputs used to produce the figures a
 
 Each omnidirectional cell pools input from spatial cells across all `hd_modules` head-direction preferences, and — per the asymmetric-connectivity mechanism above — each spatial cell's connection to a given omnidirectional cell is already offset *against* that spatial cell's own preferred direction. Inclination breaks the symmetry of the pooling on top of this fixed offset: spatial cells whose preferred heading points *downhill* (`inclination_dir` in `simulation.py`) are boosted relative to those pointing *uphill* (via `A_mod`, `inc_angle_std`), so the two sub-populations no longer contribute equally to the summed drive.
 
-Global inhibition (`T0`, `T1`) is also modulated by inclination, but is direction-independent, so it does not itself contribute to the asymmetry — the shift arises exclusively from the directional gain acting on the spatial pathway.
+Global inhibition (`T0`, `T1`) is also modulated by inclination, which helps to balance network activity across different sessions, keeping the overall structure of the spatial grid-cell firing.
 
 This is exactly what the `data` pipeline in `utils.py`/`analysis.py` measures: `compute_rate_maps_from_sparse` → `compute_cross_corrs` → `find_spatial_shift_subpixel` computes, for every cell, the sub-pixel offset between its baseline (0° inclination) rate map and its rate map at a given inclination angle, and `analysis.py` aggregates these offsets into the `Shift X` / `Shift Y` distributions and the corresponding Friedman/Wilcoxon/Dunn statistics, split further by running direction (`Up` vs. `Down`) to test whether the shift itself is direction-dependent.
 
