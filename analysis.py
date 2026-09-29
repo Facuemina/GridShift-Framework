@@ -112,7 +112,7 @@ if __name__ == "__main__":
     print("Generating standard plots...")
     
     bound_y0, bound_y1 = 15, 40    
-    bound_x0, bound_x1 = 9, 34
+    bound_x0, bound_x1 = 5, 34
         
     row1_axes = []
     
