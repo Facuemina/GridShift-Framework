@@ -151,11 +151,3 @@ Adjust `num`, `NEURON_IDX`, and the smoothing/plotting parameters at the top of 
 ## Data
 
 The `data/` folder contains the pre-computed simulation results (spikes, trajectories, and parameters for each inclination-angle session) used to generate the figures and statistics reported in the paper. Point `path2load` in `analysis.py` (or the `sim_folder` argument of `load_and_compute_maps_from_sparse`) at the relevant `Simulation-spatial-num{num}` subfolder inside `data/` to reproduce the published results without re-running the simulations.
-
-## Citation
-
-If you use this code, please cite the associated paper. *(Add citation / DOI here.)*
-
-## License
-
-*(Add license here.)*
